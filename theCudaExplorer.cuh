@@ -41,6 +41,7 @@ struct LargeLinkedObject {
     struct LargeLinkedObject *next;
 };
 
+// Loads from the array of objects in the shuffled order into the result array (which is in GDDR)
 template <typename T>
 __global__ void GPUListConsumer(cuda::atomic<int>* flag, T** ptr, int ** result, int ** order, int *count) {
   #ifdef RC
@@ -51,6 +52,7 @@ __global__ void GPUListConsumer(cuda::atomic<int>* flag, T** ptr, int ** result,
   }
 }
 
+// Loads from the array of objects in the shuffled order into the result array (which is in DRAM)
 template <typename T>
 __host__ void CPUListConsumer(cuda::atomic<int>* flag, T** ptr, int ** result, int ** order, int *count) {
   #ifdef RC
@@ -61,6 +63,7 @@ __host__ void CPUListConsumer(cuda::atomic<int>* flag, T** ptr, int ** result, i
   }
 }
 
+// Stores to the array of objects in the shuffled order
 template <typename T>
 __global__ void GPUListProducer(cuda::atomic<int>* flag, T** ptr, int ** order, int *count) {
     #ifdef RC
@@ -76,6 +79,7 @@ __global__ void GPUListProducer(cuda::atomic<int>* flag, T** ptr, int ** order, 
     #endif
 }
 
+// Stores to the array of objects in the shuffled order
 template <typename T>
 __host__ void CPUListProducer(cuda::atomic<int>* flag, T** ptr, int ** order, int *count) {
     

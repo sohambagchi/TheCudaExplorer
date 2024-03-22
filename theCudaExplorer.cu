@@ -5,12 +5,14 @@
 
 char randString[3556156];
 
+// creates a random string for the object padding
 void initRandString(int paddingSize) {
     for (int i = 0; i < paddingSize; i++) {
         randString[i] = rand() % 26 + 'a';
     }
 }
 
+// creates the shuffling order for the objects
 void shuffleList(int ** localOrder, int count) {
     for (int i = 0; i < count; i++) {
         int j = rand() % count;
@@ -135,6 +137,7 @@ int main(int argc, char* argv[]) {
 
     int numCPUEvents = 0, numGPUEvents = 0;
 
+    // identify CPU and GPU events separately for timers
     for (int i = 0; i < operationSequence[0].total; i++) {
         // printf("%s %s\n", operationSequence[i].device == CE_CPU ? "CPU" : "\t\tGPU", operationSequence[i].action == CE_LOAD ? "ld" : "st");
         if (operationSequence[i].device == CE_CPU) {
@@ -180,6 +183,7 @@ int main(int argc, char* argv[]) {
     SAFE(cudaMallocHost(&largeObjectListOrder, sizeof(int*) * *count));
     SAFE(cudaMallocHost(&localOrder, sizeof(int*) * *count));
 
+    // allocate the ordering array in both DRAM and GDDR
     for (int i = 0; i < (*count); i++) {
         SAFE(cudaMalloc(&largeObjectListOrder[i], sizeof(int)));
         SAFE(cudaMallocHost(&localOrder[i], sizeof(int)));
@@ -209,6 +213,7 @@ int main(int argc, char* argv[]) {
 
     printSequence(operationSequence);
 
+    // randomly pad all the objects
     for (int i = 0; i < (*count); i++) {
         initRandString((sizeof(LargeObject) - sizeof(int)) / (2 * sizeof(char)));
         strcpy((largeObjectList[*localOrder[i]])->padding1, randString);
@@ -219,6 +224,7 @@ int main(int argc, char* argv[]) {
     int CPUEventCount = 0;
     int GPUEventCount = 0;
 
+    // do all the operations in the order specified
     for (int i = 0; i < operationSequence[0].total; i++) {
         if (operationSequence[i].device == CE_CPU) {
             begin[CPUEventCount] = std::chrono::high_resolution_clock::now();
@@ -242,6 +248,8 @@ int main(int argc, char* argv[]) {
                     break;
             }
             cudaEventRecord(stop[GPUEventCount]);
+
+            // synchronize GPU executation after every operation
             cudaEventSynchronize(stop[GPUEventCount]);
             GPUEventCount++;
         }
