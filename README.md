@@ -1,5 +1,3 @@
-Here's the README.md file updated with the Makefile section:
-
 # The CUDA Explorer
 
 The CUDA Explorer is a tool designed to explore memory operations and timings between CPU and GPU in CUDA-accelerated applications. This tool provides insights into memory access patterns and performance characteristics of different memory types.
