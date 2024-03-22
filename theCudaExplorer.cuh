@@ -48,7 +48,12 @@ __global__ void GPUListConsumer(cuda::atomic<int>* flag, T** ptr, int ** result,
   while (flag->load(cuda::memory_order_acquire) == 0) {}
   #endif
   for (int i = 0; i < *count; i++) {
-    *result[i] = (ptr[*order[i]])->data;
+    // if ( sizeof((ptr[*order[i]])->padding1) == sizeof((ptr[*order[i]])->padding2) ) {
+      *result[i] = (ptr[*order[i]])->data;
+    // }
+    for (int j = 0; j < 3556156; j++) {
+      *result[i] += (ptr[*order[i]])->padding1[j] + (ptr[*order[i]])->padding2[j];
+    }
   }
 }
 
@@ -59,7 +64,13 @@ __host__ void CPUListConsumer(cuda::atomic<int>* flag, T** ptr, int ** result, i
   while (flag->load(cuda::memory_order_acquire) == 0) {}
   #endif
   for (int i = 0; i < *count; i++) {
-    *result[i] = (ptr[*order[i]])->data;
+    // if ( sizeof((ptr[*order[i]])->padding1) == sizeof((ptr[*order[i]])->padding2) ) {
+      *result[i] = (ptr[*order[i]])->data;
+    // }
+    for (int j = 0; j < 3556156; j++) {
+      *result[i] += (ptr[*order[i]])->padding1[j] + (ptr[*order[i]])->padding2[j];
+    }
+    // *result[i] = (ptr[*order[i]])->data;
   }
 }
 

@@ -3,10 +3,10 @@
 
 #include "theCudaExplorer.cuh"
 
-char randString[3556156];
+// char randString[3556156];
 
 // creates a random string for the object padding
-void initRandString(int paddingSize) {
+void initRandString(int paddingSize, char * randString) {
     for (int i = 0; i < paddingSize; i++) {
         randString[i] = rand() % 26 + 'a';
     }
@@ -215,10 +215,12 @@ int main(int argc, char* argv[]) {
 
     // randomly pad all the objects
     for (int i = 0; i < (*count); i++) {
-        initRandString((sizeof(LargeObject) - sizeof(int)) / (2 * sizeof(char)));
-        strcpy((largeObjectList[*localOrder[i]])->padding1, randString);
+        initRandString((sizeof(LargeObject) - sizeof(int)) / (2 * sizeof(char)), (largeObjectList[*localOrder[i]])->padding1);
+        // strcpy((largeObjectList[*localOrder[i]])->padding1, randString);
         (largeObjectList[*localOrder[i]])->data = i;
-        strcpy((largeObjectList[*localOrder[i]])->padding2, randString);
+        // strcpy((largeObjectList[*localOrder[i]])->padding2, randString);
+        initRandString((sizeof(LargeObject) - sizeof(int)) / (2 * sizeof(char)), (largeObjectList[*localOrder[i]])->padding2);
+
     }
 
     int CPUEventCount = 0;

@@ -1,1 +1,3 @@
 theCudaExplorer
+*.nsys-rep
+*.sqlite
