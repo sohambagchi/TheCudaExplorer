@@ -124,20 +124,3 @@ CPU st      CPU ld
 GPU st      GPU ld
 CPU st      CPU ld
 ```
-
-
-## Contributors
-
-- [Your Name or Organization]
-
-## License
-
-[License Information]
-
-## Acknowledgments
-
-[Optional: Acknowledge any resources, libraries, or individuals that contributed to the project.]
-
----
-
-Feel free to modify and expand this README according to your project's specifics and requirements.
