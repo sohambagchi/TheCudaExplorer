@@ -1,3 +1,4 @@
 theCudaExplorer
 *.nsys-rep
 *.sqlite
+*.ptx

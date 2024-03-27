@@ -13,10 +13,11 @@ void initRandString(int paddingSize) {
 }
 
 // creates the shuffling order for the objects
-void shuffleList(int ** localOrder, int count) {
+void shuffleList(int * localOrder, int count) {
+    int j, tmp;
     for (int i = 0; i < count; i++) {
-        int j = rand() % count;
-        int *tmp = localOrder[i];
+        j = rand() % count;
+        tmp = localOrder[i];
         localOrder[i] = localOrder[j];
         localOrder[j] = tmp;
     }
@@ -147,6 +148,11 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    printf("Size of Object: %.2f MB\n", sizeof(struct LargeObject) / (1024.0 * 1024.0));
+    printf("Number of Objects: %d\n", numObjects);
+    printf("CPU Events Timed: %d\t GPU Events Timed: %d\n\n", numCPUEvents, numGPUEvents);
+
+
     // CPU Timers
     std::chrono::high_resolution_clock::time_point begin[numCPUEvents], end[numCPUEvents];
     int64_t durations[numCPUEvents];
@@ -160,54 +166,64 @@ int main(int argc, char* argv[]) {
         SAFE(cudaEventCreate(&stop[i]));
     }
 
-    cuda::atomic<int>* flag;
-    struct LargeObject ** largeObjectList;
-    int ** largeObjectListConsumer;
-    int ** localConsumer;
-    int ** largeObjectListOrder;
-    int ** localOrder;
+    printf("- Timers Initialized\n");
+
+    cuda::atomic<int> * flag;
+    struct LargeObject * largeObjectList;
+    int * largeObjectListConsumer;
+    int * localConsumer;
+    int * largeObjectListOrder;
+    int * localOrder;
     int * count;
 
+    SAFE(cudaMallocHost(&flag, sizeof(cuda::atomic<int>)));
     SAFE(cudaMallocHost(&count, sizeof(int)));
+    SAFE(cudaMallocHost(&localConsumer, sizeof(int*) * numObjects));
+    SAFE(cudaMallocHost(&localOrder, sizeof(int*) * numObjects));
+    
+    printf("- CPU Objects Allocated\n");
+
+    SAFE(cudaMalloc(&largeObjectListConsumer, sizeof(int*) * numObjects));
+    SAFE(cudaMalloc(&largeObjectListOrder, sizeof(int*) * numObjects));
+
+    printf("- GPU Objects Allocated\n");
+
+    if (memoryType == CE_DRAM) {
+        SAFE(cudaMallocHost(&largeObjectList, sizeof(struct LargeObject) * numObjects));
+    } else {
+        SAFE(cudaMallocManaged(&largeObjectList, sizeof(struct LargeObject) * numObjects));
+    }
+
+    printf("- Large Objects Allocated\n");
+
 
     *count = numObjects;
 
-    printf("Size of Object: %.2f MB\n", sizeof(struct LargeObject) / (1024.0 * 1024.0));
-    printf("Number of Objects: %d\n", *count);
-    printf("CPU Events Timed: %d\t GPU Events Timed: %d\n", numCPUEvents, numGPUEvents);
-
-    SAFE(cudaMallocHost(&flag, sizeof(cuda::atomic<int>)));
-    SAFE(cudaMallocHost(&largeObjectList, sizeof(struct LargeObject*) * *count));
-    SAFE(cudaMallocHost(&largeObjectListConsumer, sizeof(int*) * *count));
-    SAFE(cudaMallocHost(&localConsumer, sizeof(int*) * *count));
-    SAFE(cudaMallocHost(&largeObjectListOrder, sizeof(int*) * *count));
-    SAFE(cudaMallocHost(&localOrder, sizeof(int*) * *count));
-
     // allocate the ordering array in both DRAM and GDDR
     for (int i = 0; i < (*count); i++) {
-        SAFE(cudaMalloc(&largeObjectListOrder[i], sizeof(int)));
-        SAFE(cudaMallocHost(&localOrder[i], sizeof(int)));
-        *localOrder[i] = i;
+        localOrder[i] = i;
     }
 
     shuffleList(localOrder, *count);
 
-    for (int i = 0; i < (*count); i++) {
+    // for (int i = 0; i < (*count); i++) {
 
-        // Allocate the data objects according to arguments
-        if (memoryType == CE_DRAM) {
-            SAFE(cudaMallocHost(&largeObjectList[*localOrder[i]], sizeof(struct LargeObject)));
-        } else {
-            SAFE(cudaMallocManaged(&largeObjectList[*localOrder[i]], sizeof(struct LargeObject)));
-        }
+    //     // Allocate the data objects according to arguments
+    //     // if (memoryType == CE_DRAM) {
+    //     //     SAFE(cudaMallocHost(&largeObjectList[*localOrder[i]], sizeof(struct LargeObject)));
+    //     // } else {
+    //     //     SAFE(cudaMallocManaged(&largeObjectList[*localOrder[i]], sizeof(struct LargeObject)));
+    //     // }
 
-        // Separate Consumer Lists for CPU and GPU, to mitigate remote store latency
-        SAFE(cudaMalloc(&largeObjectListConsumer[i], sizeof(int)));
-        SAFE(cudaMallocHost(&localConsumer[i], sizeof(int)));
+    //     // Separate Consumer Lists for CPU and GPU, to mitigate remote store latency
+    //     // SAFE(cudaMalloc(&largeObjectListConsumer[i], sizeof(int)));
+    //     // SAFE(cudaMallocHost(&localConsumer[i], sizeof(int)));
 
-        // Copy the locally shuffled order to the device
-        SAFE(cudaMemcpy(largeObjectListOrder[i], localOrder[i], sizeof(int), cudaMemcpyHostToDevice));
-    }
+    //     // Copy the locally shuffled order to the device
+    //     // SAFE(cudaMemcpy(largeObjectListOrder[i], localOrder[i], sizeof(int), cudaMemcpyHostToDevice));
+    // }
+
+
 
     printf("\nUsing %s for Objects\n\n", memoryType == CE_DRAM ? "cudaMallocHost" : "cudaMallocManaged");
 
@@ -216,9 +232,9 @@ int main(int argc, char* argv[]) {
     // randomly pad all the objects
     for (int i = 0; i < (*count); i++) {
         initRandString((sizeof(LargeObject) - sizeof(int)) / (2 * sizeof(char)));
-        strcpy((largeObjectList[*localOrder[i]])->padding1, randString);
-        (largeObjectList[*localOrder[i]])->data = i;
-        strcpy((largeObjectList[*localOrder[i]])->padding2, randString);
+        strcpy((largeObjectList[localOrder[i]]).padding1, randString);
+        (largeObjectList[localOrder[i]]).data = i;
+        strcpy((largeObjectList[localOrder[i]]).padding2, randString);
     }
 
     int CPUEventCount = 0;
@@ -230,10 +246,10 @@ int main(int argc, char* argv[]) {
             begin[CPUEventCount] = std::chrono::high_resolution_clock::now();
             switch (operationSequence[i].action) {
                 case CE_LOAD:
-                    CPUListConsumer(flag, largeObjectList, localConsumer, localOrder, count);
+                    CPUListConsumer_(flag, largeObjectList, localConsumer, localOrder, count);
                     break;
                 case CE_STORE:
-                    CPUListProducer(flag, largeObjectList, localOrder, count);
+                    CPUListProducer_(flag, largeObjectList, localOrder, count);
                     break;
             }
             end[CPUEventCount++] = std::chrono::high_resolution_clock::now();
@@ -241,10 +257,10 @@ int main(int argc, char* argv[]) {
             cudaEventRecord(start[GPUEventCount]);
             switch (operationSequence[i].action) {
                 case CE_LOAD:
-                    GPUListConsumer<<<1,1>>>(flag, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count);
+                    GPUListConsumer_<<<1,1>>>(flag, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count);
                     break;
                 case CE_STORE:
-                    GPUListProducer<<<1,1>>>(flag, largeObjectList, largeObjectListOrder, count);
+                    GPUListProducer_<<<1,1>>>(flag, largeObjectList, largeObjectListOrder, count);
                     break;
             }
             cudaEventRecord(stop[GPUEventCount]);
