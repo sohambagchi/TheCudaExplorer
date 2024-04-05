@@ -81,7 +81,7 @@ void printSequence(CEOperation * sequence) {
         printf("%s %s\n", sequence[i].device == CE_CPU ? "CPU" : "\t\tGPU", sequence[i].action == CE_LOAD ? "ld" : "st");
     }
 
-    printf("\n");
+    printf("\n\n\n");
 
 }
 
@@ -176,6 +176,11 @@ int main(int argc, char* argv[]) {
     int * localOrder;
     int * count;
 
+    long long int * before;
+    long long int * after;
+    long long int * localBefore;
+    long long int * localAfter;
+
     SAFE(cudaMallocHost(&flag, sizeof(cuda::atomic<int>)));
     SAFE(cudaMallocHost(&count, sizeof(int)));
     SAFE(cudaMallocHost(&localConsumer, sizeof(int*) * numObjects));
@@ -185,14 +190,18 @@ int main(int argc, char* argv[]) {
 
     SAFE(cudaMalloc(&largeObjectListConsumer, sizeof(int*) * numObjects));
     SAFE(cudaMalloc(&largeObjectListOrder, sizeof(int*) * numObjects));
+    SAFE(cudaMalloc(&before, sizeof(long long int) * numGPUEvents));
+    SAFE(cudaMalloc(&after, sizeof(long long int) * numGPUEvents));
+    SAFE(cudaMallocHost(&localBefore, sizeof(long long int) * numGPUEvents));
+    SAFE(cudaMallocHost(&localAfter, sizeof(long long int) * numGPUEvents));
 
     printf("- GPU Objects Allocated\n");
 
     if (memoryType == CE_DRAM) {
         SAFE(cudaMallocHost(&largeObjectList, sizeof(struct LargeObject) * numObjects));
-    } else {
+    } else if (memoryType == CE_UM) {
         SAFE(cudaMallocManaged(&largeObjectList, sizeof(struct LargeObject) * numObjects));
-    }
+    } 
 
     printf("- Large Objects Allocated\n");
 
@@ -246,10 +255,16 @@ int main(int argc, char* argv[]) {
             begin[CPUEventCount] = std::chrono::high_resolution_clock::now();
             switch (operationSequence[i].action) {
                 case CE_LOAD:
-                    CPUListConsumer_(flag, largeObjectList, localConsumer, localOrder, count);
+                    if (numObjects == 1) 
+                        CPUSingleConsumer(flag, largeObjectList, localConsumer);
+                    // else 
+                        // CPUListConsumer_(flag, largeObjectList, localConsumer, localOrder, count);
                     break;
                 case CE_STORE:
-                    CPUListProducer_(flag, largeObjectList, localOrder, count);
+                    if (numObjects == 1) 
+                        CPUSingleProducer(flag, largeObjectList, rand()%100);
+                    // else
+                        // CPUListProducer_(flag, largeObjectList, localOrder, count);
                     break;
             }
             end[CPUEventCount++] = std::chrono::high_resolution_clock::now();
@@ -257,10 +272,16 @@ int main(int argc, char* argv[]) {
             cudaEventRecord(start[GPUEventCount]);
             switch (operationSequence[i].action) {
                 case CE_LOAD:
-                    GPUListConsumer_<<<1,1>>>(flag, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count);
+                    if (numObjects == 1) 
+                        GPUSingleConsumer<<<1,1>>>(flag, largeObjectList, largeObjectListConsumer, &before[GPUEventCount], &after[GPUEventCount]);
+                    // else
+                    //     GPUListConsumer_<<<1,1>>>(flag, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count);
                     break;
                 case CE_STORE:
-                    GPUListProducer_<<<1,1>>>(flag, largeObjectList, largeObjectListOrder, count);
+                    if (numObjects == 1) 
+                        GPUSingleProducer<<<1,1>>>(flag, largeObjectList, &before[GPUEventCount], &after[GPUEventCount], rand()%100);
+                    // else
+                        // GPUListProducer_<<<1,1>>>(flag, largeObjectList, largeObjectListOrder, count);
                     break;
             }
             cudaEventRecord(stop[GPUEventCount]);
@@ -270,6 +291,12 @@ int main(int argc, char* argv[]) {
             GPUEventCount++;
         }
     }
+
+    // struct LargeObject * GPUObjectList;
+    // SAFE(cudaMalloc(&GPUObjectList, sizeof(struct LargeObject) * numObjects));
+    // SAFE(cudaMemcpy(GPUObjectList, largeObjectList, sizeof(struct LargeObject) * numObjects, cudaMemcpyHostToDevice));
+
+    // printf("succ");
 
     cudaDeviceSynchronize();
 
@@ -284,6 +311,23 @@ int main(int argc, char* argv[]) {
     }
 
     printResults(operationSequence, numCPUEvents, numGPUEvents, durations, milliseconds, count);
+
+    cudaMemcpy(localBefore, before, sizeof(long long int) * numGPUEvents, cudaMemcpyDeviceToHost);
+    cudaMemcpy(localAfter, after, sizeof(long long int) * numGPUEvents, cudaMemcpyDeviceToHost);
+
+    printf("Clock64 Results\n");
+
+    for (int i = 0; i < numGPUEvents; i++) {
+        printf("GPU Event %d: %lld cycles\n", i, localAfter[i] - localBefore[i]);
+    }
+
+    // printf("%d\n", largeObjectList[0].data);
+
+    cudaMemcpy(localConsumer, largeObjectListConsumer, sizeof(int), cudaMemcpyDeviceToHost);
+
+    // printf("%d\n", localConsumer[0]);
+
+    // printf("%d\n", largeObjectList[0].data);
 
     return 0;
 
