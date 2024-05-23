@@ -3,7 +3,7 @@
 
 #include "theCudaExplorer.cuh"
 
-char randString[3556156];
+char randString[PADDING_LENGTH];
 
 // creates a random string for the object padding
 void initRandString(int paddingSize) {
@@ -13,10 +13,10 @@ void initRandString(int paddingSize) {
 }
 
 // creates the shuffling order for the objects
-void shuffleList(int ** localOrder, int count) {
+void shuffleList(int * localOrder, int count) {
     for (int i = 0; i < count; i++) {
         int j = rand() % count;
-        int *tmp = localOrder[i];
+        int tmp = localOrder[i];
         localOrder[i] = localOrder[j];
         localOrder[j] = tmp;
     }
@@ -84,13 +84,14 @@ void printSequence(CEOperation * sequence) {
 
 }
 
-void printResults(CEOperation * sequence, int numCPUEvents, int numGPUEvents, int64_t * durations, float * milliseconds, int * count) {
+void printResults(CEOperation * sequence, int numCPUEvents, int numGPUEvents, int64_t * durations, unsigned int * loopDurations, float * milliseconds, int * count) {
     
     printf("Results\n======================\n");
 
     for (int i = 0, j = 0, k = 0; i < sequence[0].total; i++) {
         printf("%s %s\n", sequence[i].device == CE_CPU ? "CPU" : "\t\tGPU", sequence[i].action == CE_LOAD ? "ld" : "st");
-        printf("%s    (%ld ns)\n", sequence[i].device == CE_CPU ? "" : "\t\t", sequence[i].device == CE_CPU ? durations[j++] / *count : (int64_t) (milliseconds[k++] / *count));
+        printf("%s    (%ld ns)\n", sequence[i].device == CE_CPU ? "" : "\t\t", sequence[i].device == CE_CPU ? durations[j++] / *count : (int64_t) (milliseconds[k] / *count));
+        printf("%s    (%u cycles)\n", sequence[i].device == CE_CPU ? "" : "\t\t", sequence[i].device == CE_CPU ? 0 : (loopDurations[k++] / *count));
     }
 
 }
@@ -121,6 +122,8 @@ int main(int argc, char* argv[]) {
                     memoryType = CE_DRAM;
                 } else if (strcmp(optarg, "UM") == 0) {
                     memoryType = CE_UM;
+                } else if (strcmp(optarg, "GDDR") == 0) {
+                    memoryType = CE_GDDR;
                 } else {
                     printf("Invalid Memory Type: %s\n", optarg);
                     abort();
@@ -155,17 +158,26 @@ int main(int argc, char* argv[]) {
     cudaEvent_t start[numGPUEvents], stop[numGPUEvents];
     float milliseconds[numGPUEvents];
 
+    // Internal clock64() timers
+    unsigned int * beforeLoop[numGPUEvents];
+    unsigned int * afterLoop[numGPUEvents];
+    unsigned int localBeforeLoop[numGPUEvents];
+    unsigned int localAfterLoop[numGPUEvents];
+    unsigned int loopDuration[numGPUEvents];
+
     for (int i = 0; i < numGPUEvents; i++) {
         SAFE(cudaEventCreate(&start[i]));
         SAFE(cudaEventCreate(&stop[i]));
+        SAFE(cudaMalloc(&beforeLoop[i], sizeof(unsigned int)));
+        SAFE(cudaMalloc(&afterLoop[i], sizeof(unsigned int)));
     }
 
     cuda::atomic<int>* flag;
-    struct LargeObject ** largeObjectList;
-    int ** largeObjectListConsumer;
-    int ** localConsumer;
-    int ** largeObjectListOrder;
-    int ** localOrder;
+    struct LargeObject * largeObjectList;
+    int * largeObjectListConsumer;
+    int * localConsumer;
+    int * largeObjectListOrder;
+    int * localOrder;
     int * count;
 
     SAFE(cudaMallocHost(&count, sizeof(int)));
@@ -177,49 +189,43 @@ int main(int argc, char* argv[]) {
     printf("CPU Events Timed: %d\t GPU Events Timed: %d\n", numCPUEvents, numGPUEvents);
 
     SAFE(cudaMallocHost(&flag, sizeof(cuda::atomic<int>)));
-    SAFE(cudaMallocHost(&largeObjectList, sizeof(struct LargeObject*) * *count));
-    SAFE(cudaMallocHost(&largeObjectListConsumer, sizeof(int*) * *count));
-    SAFE(cudaMallocHost(&localConsumer, sizeof(int*) * *count));
-    SAFE(cudaMallocHost(&largeObjectListOrder, sizeof(int*) * *count));
-    SAFE(cudaMallocHost(&localOrder, sizeof(int*) * *count));
+    SAFE(cudaMallocHost(&largeObjectListConsumer, sizeof(int) * *count));
+    SAFE(cudaMallocHost(&localConsumer, sizeof(int) * *count));
+    SAFE(cudaMallocHost(&largeObjectListOrder, sizeof(int) * *count));
+    SAFE(cudaMallocHost(&localOrder, sizeof(int) * *count));
 
+    if (memoryType == CE_DRAM) {
+        SAFE(cudaMallocHost(&largeObjectList, sizeof(struct LargeObject) * *count));
+    } else if (memoryType == CE_UM) {
+        SAFE(cudaMallocManaged(&largeObjectList, sizeof(struct LargeObject) * *count));
+    } else {
+        SAFE(cudaMalloc(&largeObjectList, sizeof(struct LargeObject) * *count));
+    }
+        
     // allocate the ordering array in both DRAM and GDDR
     for (int i = 0; i < (*count); i++) {
-        SAFE(cudaMalloc(&largeObjectListOrder[i], sizeof(int)));
-        SAFE(cudaMallocHost(&localOrder[i], sizeof(int)));
-        *localOrder[i] = i;
+        localOrder[i] = i;
     }
 
     shuffleList(localOrder, *count);
+    SAFE(cudaMemcpy(largeObjectListOrder, localOrder, sizeof(int) * *count, cudaMemcpyHostToDevice));
 
-    for (int i = 0; i < (*count); i++) {
+    printf("\nUsing %s for Objects\n\n", memoryType == CE_DRAM ? "cudaMallocHost" : memoryType == CE_UM ? "cudaMallocManaged" : "cudaMalloc");
 
-        // Allocate the data objects according to arguments
-        if (memoryType == CE_DRAM) {
-            SAFE(cudaMallocHost(&largeObjectList[*localOrder[i]], sizeof(struct LargeObject)));
-        } else {
-            SAFE(cudaMallocManaged(&largeObjectList[*localOrder[i]], sizeof(struct LargeObject)));
+    //randomly pad all the objects
+    
+    if (memoryType != CE_GDDR) {
+        for (int i = 0; i < (*count); i++) {
+            initRandString((sizeof(LargeObject) - sizeof(int)) / (2 * sizeof(char)));
+            strcpy(largeObjectList[localOrder[i]].padding1, randString);
+            // initRandString((sizeof(LargeObject) - sizeof(int)) / (2 * sizeof(char)));
+            strcpy(largeObjectList[localOrder[i]].padding2, randString);
+            // (largeObjectList[localOrder[i]]).data = i;
+            (largeObjectList[localOrder[i]]).data.store(i);
         }
-
-        // Separate Consumer Lists for CPU and GPU, to mitigate remote store latency
-        SAFE(cudaMalloc(&largeObjectListConsumer[i], sizeof(int)));
-        SAFE(cudaMallocHost(&localConsumer[i], sizeof(int)));
-
-        // Copy the locally shuffled order to the device
-        SAFE(cudaMemcpy(largeObjectListOrder[i], localOrder[i], sizeof(int), cudaMemcpyHostToDevice));
     }
-
-    printf("\nUsing %s for Objects\n\n", memoryType == CE_DRAM ? "cudaMallocHost" : "cudaMallocManaged");
 
     printSequence(operationSequence);
-
-    // randomly pad all the objects
-    for (int i = 0; i < (*count); i++) {
-        initRandString((sizeof(LargeObject) - sizeof(int)) / (2 * sizeof(char)));
-        strcpy((largeObjectList[*localOrder[i]])->padding1, randString);
-        (largeObjectList[*localOrder[i]])->data = i;
-        strcpy((largeObjectList[*localOrder[i]])->padding2, randString);
-    }
 
     int CPUEventCount = 0;
     int GPUEventCount = 0;
@@ -241,7 +247,8 @@ int main(int argc, char* argv[]) {
             cudaEventRecord(start[GPUEventCount]);
             switch (operationSequence[i].action) {
                 case CE_LOAD:
-                    GPUListConsumer<<<1,1>>>(flag, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count);
+                    GPUListConsumer<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                    SAFE(cudaMemcpy(&localBeforeLoop[GPUEventCount], beforeLoop[GPUEventCount], sizeof(unsigned int), cudaMemcpyDeviceToHost));
                     break;
                 case CE_STORE:
                     GPUListProducer<<<1,1>>>(flag, largeObjectList, largeObjectListOrder, count);
@@ -261,13 +268,16 @@ int main(int argc, char* argv[]) {
         milliseconds[i] = 0;
         cudaEventElapsedTime(&milliseconds[i], start[i], stop[i]);
         milliseconds[i] *= 1e6;
+        loopDuration[i] = localAfterLoop[i] - localBeforeLoop[i];
     }
 
     for (int i = 0; i < numCPUEvents; i++) {
         durations[i] = std::chrono::duration_cast<std::chrono::nanoseconds>(end[i] - begin[i]).count();
     }
 
-    printResults(operationSequence, numCPUEvents, numGPUEvents, durations, milliseconds, count);
+    printResults(operationSequence, numCPUEvents, numGPUEvents, durations, loopDuration, milliseconds, count);
+
+    printf("\n----------------------\n\n\n");
 
     return 0;
 
