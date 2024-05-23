@@ -14,21 +14,13 @@ make
 
 This command will use the provided Makefile to compile the source files and generate the executable.
 
-2. **Run the Program**: Execute the compiled program with appropriate command-line arguments to specify the number of objects, the order of operations, and the type of memory to use.
+2. **Run the Program**: Run the included Python file `cleanup_executables.py` to rename the clunky executables, and also run them all. 
 
 ```bash
-./theCudaExplorer -n <num_objects> -o <operation_order> -m <memory_type>
+python3 cleanup_executables.py
 ```
 
-Replace `<num_objects>` with the desired number of objects, `<operation_order>` with the sequence of memory operations, and `<memory_type>` with either "DRAM" or "UM" (Unified Memory).
-
-For example:
-
-```bash
-./theCudaExplorer -n 1024 -o "PcCgg" -m DRAM
-```
-
-This command runs the exploration with 1024 objects, following the specified operation order using CUDA mallocHost for DRAM memory.
+This command runs the exploration with 512 objects, using only GPU Memory
 
 3. **Interpret Results**: After execution, the program provides results including the sequence of memory operations and their corresponding timings for CPU and GPU events.
 
