@@ -12,5 +12,5 @@ for file in os.listdir('.'):
         
         cuda_explorer_output = subprocess.run([f'./{new_filename}', '-n', '512', '-o', 'Cgg', '-m', 'GDDR'], capture_output=True)
         
-        with open(f'{new_filename.replace('.out', '.txt')}', 'w') as f:
+        with open(f'{new_filename.replace(".out", ".txt")}', 'w') as f:
             f.write(cuda_explorer_output.stdout.decode('utf-8'))
