@@ -27,7 +27,8 @@ void shuffleList(int * localOrder, int count) {
 void printHelp() {
     printf("-n <int> : Number of Objects\n");
     printf("-o <string> : The order of operations\n");
-    printf("-m <string> : The type of memory to use (DRAM or UM)\n\n");
+    printf("-m <string> : The type of memory to use (DRAM or UM)\n");
+    printf("-c <string> : Memory Order (acq, rel, acq_rel, acq_acq)\n\n");
 
     printf("Example: ./theCudaExplorer -n 1024 -o \"PcCgg\" -m DRAM\n");
     printf("This runs the following Litmus Test using cudaMallocHost\n\n");
@@ -106,10 +107,11 @@ int main(int argc, char* argv[]) {
 
     CEMemory memoryType;
     CEOperation * operationSequence;
+    CEOrder memoryOrder;
     int numObjects;
     
         int opt;
-    while ((opt = getopt(argc, argv, "n:o:m:h")) != -1) {
+    while ((opt = getopt(argc, argv, "n:o:m:c:h")) != -1) {
         switch (opt) {
             case 'n':
                 numObjects = atoi(optarg);
@@ -126,6 +128,20 @@ int main(int argc, char* argv[]) {
                     memoryType = CE_GDDR;
                 } else {
                     printf("Invalid Memory Type: %s\n", optarg);
+                    abort();
+                }
+                break;
+            case 'c':
+                if (strcmp(optarg, "acq") == 0) {
+                    memoryOrder = CE_ACQ;
+                } else if (strcmp(optarg, "rel") == 0) {
+                    memoryOrder = CE_REL;
+                } else if (strcmp(optarg, "acq-rel") == 0) {
+                    memoryOrder = CE_ACQ_REL;
+                } else if (strcmp(optarg, "acq-acq") == 0) {
+                    memoryOrder = CE_ACQ_ACQ;
+                } else {
+                    printf("Invalid Memory Order: %s\n", optarg);
                     abort();
                 }
                 break;
@@ -210,7 +226,9 @@ int main(int argc, char* argv[]) {
     shuffleList(localOrder, *count);
     SAFE(cudaMemcpy(largeObjectListOrder, localOrder, sizeof(int) * *count, cudaMemcpyHostToDevice));
 
-    printf("\nUsing %s for Objects\n\n", memoryType == CE_DRAM ? "cudaMallocHost" : memoryType == CE_UM ? "cudaMallocManaged" : "cudaMalloc");
+    printf("\nUsing %s for Objects\n", memoryType == CE_DRAM ? "cudaMallocHost" : memoryType == CE_UM ? "cudaMallocManaged" : "cudaMalloc");
+    printf("Per-Iteration Loads: %s\n\n", memoryOrder == CE_ACQ ? "acquire" : memoryOrder == CE_REL ? "release" : memoryOrder == CE_ACQ_ACQ ? "acq/acq" : "acq/rel");
+
 
     //randomly pad all the objects
     
@@ -247,7 +265,21 @@ int main(int argc, char* argv[]) {
             cudaEventRecord(start[GPUEventCount]);
             switch (operationSequence[i].action) {
                 case CE_LOAD:
-                    GPUListConsumer<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                    // GPUListConsumer<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                    switch (memoryOrder) {
+                        case CE_ACQ:
+                            GPUListConsumer_acq<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                            break;
+                        case CE_REL:
+                            GPUListConsumer_rel<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                            break;
+                        case CE_ACQ_ACQ:
+                            GPUListConsumer_acq_acq<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                            break;
+                        case CE_ACQ_REL:
+                            GPUListConsumer_acq_rel<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                            break;
+                    }
                     SAFE(cudaMemcpy(&localBeforeLoop[GPUEventCount], beforeLoop[GPUEventCount], sizeof(unsigned int), cudaMemcpyDeviceToHost));
                     break;
                 case CE_STORE:

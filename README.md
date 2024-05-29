@@ -24,6 +24,11 @@ This command runs the exploration with 512 objects, using only GPU Memory
 
 3. **Interpret Results**: After execution, the program provides results including the sequence of memory operations and their corresponding timings for CPU and GPU events.
 
+```bash
+python3 read_data.py
+```
+
+This command reads all the data and compiles it into a CSV file. 
 
 ## Command-Line Options
 

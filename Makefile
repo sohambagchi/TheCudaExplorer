@@ -10,28 +10,21 @@ CUOBJDUMPFLAGS = -sass
 SASS = theCudaExplorer.sass
 
 SCOPES = cuda::thread_scope_thread cuda::thread_scope_block cuda::thread_scope_device cuda::thread_scope_system
-LOAD_ORDER = cuda::memory_order_acquire cuda::memory_order_relaxed
+# LOAD_ORDER = cuda::memory_order_acquire cuda::memory_order_relaxed
 
 all: $(OUTPUT) ptx
 
 $(OUTPUT): $(SOURCES) $(HEADERS)
 	for scope in $(SCOPES); do \
-		for load_order1 in $(LOAD_ORDER); do \
-			for load_order2 in $(LOAD_ORDER); do \
-				$(NVCC) $(NVCCFLAGS) -DSCOPE=$$scope -DLOAD1=$$load_order1 -DLOAD2=$$load_order2 -o $(OUTPUT)_$$scope$$load_order1$$load_order2.out $(SOURCES); \
-			done; \
-		done; \
+		$(NVCC) $(NVCCFLAGS) -DSCOPE=$$scope -o $(OUTPUT)_$$scope.out $(SOURCES); \
 	done
 # $(NVCC) $(NVCCFLAGS)  -o $(OUTPUT) $(SOURCES)
 
 ptx: $(SOURCES) $(HEADERS)
 	for scope in $(SCOPES); do \
-		for load_order1 in $(LOAD_ORDER); do \
-			for load_order2 in $(LOAD_ORDER); do \
-				$(NVCC) $(NVCCFLAGS) -DSCOPE=$$scope -DLOAD1=$$load_order1 -DLOAD2=$$load_order2 -ptx -src-in-ptx $(SOURCES); \
-				cp $(PTX) $(PTX)_$$scope$$load_order1$$load_order2; \
-			done; \
-		done; \
+		$(NVCC) $(NVCCFLAGS) -DSCOPE=$$scope -ptx -src-in-ptx $(SOURCES); \
+		cp $(PTX) $(PTX)_$$scope; \
+		$(CUOBJDUMP) $(CUOBJDUMPFLAGS) $(OUTPUT)_$$scope.out > $(SASS)_$$scope; \
 	done
 # $(NVCC) $(NVCCFLAGS) -ptx -src-in-ptx $(SOURCES)
 # $(CUOBJDUMP) $(CUOBJDUMPFLAGS) $(OUTPUT) > $(SASS)
@@ -39,3 +32,4 @@ ptx: $(SOURCES) $(HEADERS)
 
 clean:
 	rm -f $(OUTPUT) $(PTX) $(SASS)
+	rm -f *.out *.ptx *.sass

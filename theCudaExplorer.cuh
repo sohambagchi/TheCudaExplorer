@@ -12,6 +12,8 @@
 // #define LOAD1 cuda::memory_order_acquire
 // #define LOAD2 cuda::memory_order_relaxed
 
+// #define TWO_LOADS
+
 typedef enum {
     CE_CPU,
     CE_GPU
@@ -28,11 +30,19 @@ typedef enum {
     CE_GDDR
 } CEMemory;
 
+typedef enum {
+    CE_ACQ,
+    CE_REL,
+    CE_ACQ_ACQ,
+    CE_ACQ_REL
+} CEOrder;
+
 typedef struct {
     CEDevice device;
     CEAction action;
     int total;
 } CEOperation;
+
 
 struct LargeObject {
     char padding1[PADDING_LENGTH];
@@ -50,43 +60,67 @@ struct LargeLinkedObject {
 
 // Loads from the array of objects in the shuffled order into the result array (which is in GDDR)
 template <typename T>
-__global__ void GPUListConsumer(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int * result, int * order, int *count, unsigned int * before, unsigned int * after) {
+__global__ void GPUListConsumer_acq(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int * result, int * order, int *count, unsigned int *before, unsigned int *after) {
   #ifdef RC
   while (flag->load(cuda::memory_order_acquire) == 0) {}
   #endif
-  // int x;
-  // int z = *count;
-
-  // int x[512];
-  // int y[512];
-  // int z[512];
-
-  // *before = clock64();
-
   int _count = *count;
 
+  *before = clock64();
   for (int i = 0; i < _count; i++) {
-    // result[i] = (ptr[order[i]]).data;
-    // result[i] = (ptr[order[i]]).data;
-    result[i] = (ptr1[order[i]]).data.load(LOAD1);
-    
-    
+    result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
     // result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_acquire);
-    result[i] = (ptr2[order[i]]).data.load(LOAD2);
-    // x[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
-    // result[i] = x[i];
-    // y[i] = (ptr[order[i]]).data.load(cuda::memory_order_acquire);
-    // y[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
-    // result[i] += y[i];
-    // x = (ptr[order[i]]).data;
-    // z[i] = x[i] + y[i];
+    // result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
   }
+  *after = clock64();
+}
 
-  // *after = clock64();
+template <typename T>
+__global__ void GPUListConsumer_rel(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int * result, int * order, int *count, unsigned int *before, unsigned int *after) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
 
-  // for (int i = 0; i < *count; i++) {
-  //   result[i] = x[i] + y[i];
-  // }
+  *before = clock64();
+  for (int i = 0; i < _count; i++) {
+    // result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+    // result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_acquire);
+    result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
+  }
+  *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_acq(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int * result, int * order, int *count, unsigned int *before, unsigned int *after) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
+
+  *before = clock64();
+  for (int i = 0; i < _count; i++) {
+    result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+    result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_acquire);
+    // result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
+  }
+  *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_rel(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int * result, int * order, int *count, unsigned int *before, unsigned int *after) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
+
+  *before = clock64();
+  for (int i = 0; i < _count; i++) {
+    result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+    // result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_acquire);
+    result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
+  }
+  *after = clock64();
 }
 
 // Stores to the array of objects in the shuffled order
