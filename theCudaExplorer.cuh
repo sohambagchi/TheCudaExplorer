@@ -6,7 +6,7 @@
 
 // Uncomment line below to enable release/acquire flags
 // #define RC
-#define PADDING_LENGTH 33554432 >> 1
+#define PADDING_LENGTH 1
 
 // #define SCOPE cuda::thread_scope_thread
 // #define LOAD1 cuda::memory_order_acquire
@@ -34,7 +34,8 @@ typedef enum {
     CE_ACQ,
     CE_REL,
     CE_ACQ_ACQ,
-    CE_ACQ_REL
+    CE_ACQ_REL,
+    CE_NONE,
 } CEOrder;
 
 typedef struct {
@@ -47,8 +48,9 @@ typedef struct {
 struct LargeObject {
     char padding1[PADDING_LENGTH];
     // int data;
-    cuda::atomic<int, SCOPE> data;
+    int data_na;
     char padding2[PADDING_LENGTH];
+    cuda::atomic<int, SCOPE> data;
 };
 
 struct LargeLinkedObject {
@@ -57,6 +59,22 @@ struct LargeLinkedObject {
     char padding2[PADDING_LENGTH];
     struct LargeLinkedObject *next;
 };
+
+template <typename T>
+__global__ void GPUListConsumer(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
+
+  *before = clock64();
+  for (int i = 0; i < _count; i++) {
+    result[i] = (ptr1[order[i]]).data_na;
+    // result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_relaxed);
+    // result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
+  }
+  *after = clock64();
+}
 
 // Loads from the array of objects in the shuffled order into the result array (which is in GDDR)
 template <typename T>
@@ -131,6 +149,22 @@ __global__ void GPUListProducer(cuda::atomic<int>* flag, T* ptr, int * order, in
     #endif
 
   for (int i = 0; i < *count; i++) {
+    (ptr[order[i]]).data_na = i;
+  }
+
+    #ifdef RC
+    flag->store(1, cuda::memory_order_release);
+    #endif
+}
+
+// Stores to the array of objects in the shuffled order
+template <typename T>
+__global__ void GPUListProducer_rel(cuda::atomic<int>* flag, T* ptr, int * order, int *count) {
+    #ifdef RC
+    flag->store(0, cuda::memory_order_release);
+    #endif
+
+  for (int i = 0; i < *count; i++) {
     // (ptr[order[i]]).data = i;
     (ptr[order[i]]).data.store(i, cuda::memory_order_release);
   }
@@ -140,9 +174,20 @@ __global__ void GPUListProducer(cuda::atomic<int>* flag, T* ptr, int * order, in
     #endif
 }
 
-// Loads from the array of objects in the shuffled order into the result array (which is in DRAM)
 template <typename T>
 __host__ void CPUListConsumer(cuda::atomic<int>* flag, T* ptr, int * result, int * order, int *count) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  for (int i = 0; i < *count; i++) {
+    result[i] = (ptr[order[i]]).data_na;
+    // result[i] = (ptr[order[i]]).data.load(cuda::memory_order_acquire);
+  }
+}
+
+// Loads from the array of objects in the shuffled order into the result array (which is in DRAM)
+template <typename T>
+__host__ void CPUListConsumer_rel(cuda::atomic<int>* flag, T* ptr, int * result, int * order, int *count) {
   #ifdef RC
   while (flag->load(cuda::memory_order_acquire) == 0) {}
   #endif
@@ -152,9 +197,37 @@ __host__ void CPUListConsumer(cuda::atomic<int>* flag, T* ptr, int * result, int
   }
 }
 
-// Stores to the array of objects in the shuffled order
+template <typename T>
+__host__ void CPUListConsumer_acq(cuda::atomic<int>* flag, T* ptr, int * result, int * order, int *count) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  for (int i = 0; i < *count; i++) {
+    // result[i] = (ptr[order[i]]).data;
+    result[i] = (ptr[order[i]]).data.load(cuda::memory_order_acquire);
+  }
+}
+
 template <typename T>
 __host__ void CPUListProducer(cuda::atomic<int>* flag, T* ptr, int * order, int *count) {
+    
+    #ifdef RC
+    flag->store(0, cuda::memory_order_release);
+    #endif
+  
+  for (int i = 0; i < *count; i++) {
+    (ptr[order[i]]).data_na = i;
+    // (ptr[order[i]]).data.store(i, cuda::memory_order_relaxed);
+  }
+  
+    #ifdef RC
+    flag->store(1, cuda::memory_order_release);
+    #endif
+}
+
+// Stores to the array of objects in the shuffled order
+template <typename T>
+__host__ void CPUListProducer_rel(cuda::atomic<int>* flag, T* ptr, int * order, int *count) {
     
     #ifdef RC
     flag->store(0, cuda::memory_order_release);

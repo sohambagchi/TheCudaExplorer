@@ -107,11 +107,12 @@ int main(int argc, char* argv[]) {
 
     CEMemory memoryType;
     CEOperation * operationSequence;
-    CEOrder memoryOrder;
+    CEOrder gpuMemoryOrder;
+    CEOrder cpuMemoryOrder;
     int numObjects;
     
         int opt;
-    while ((opt = getopt(argc, argv, "n:o:m:c:h")) != -1) {
+    while ((opt = getopt(argc, argv, "n:o:m:c:g:h")) != -1) {
         switch (opt) {
             case 'n':
                 numObjects = atoi(optarg);
@@ -131,15 +132,29 @@ int main(int argc, char* argv[]) {
                     abort();
                 }
                 break;
-            case 'c':
+            case 'g':
                 if (strcmp(optarg, "acq") == 0) {
-                    memoryOrder = CE_ACQ;
+                    gpuMemoryOrder = CE_ACQ;
                 } else if (strcmp(optarg, "rel") == 0) {
-                    memoryOrder = CE_REL;
+                    gpuMemoryOrder = CE_REL;
                 } else if (strcmp(optarg, "acq-rel") == 0) {
-                    memoryOrder = CE_ACQ_REL;
+                    gpuMemoryOrder = CE_ACQ_REL;
                 } else if (strcmp(optarg, "acq-acq") == 0) {
-                    memoryOrder = CE_ACQ_ACQ;
+                    gpuMemoryOrder = CE_ACQ_ACQ;
+                } else if (strcmp(optarg, "none") == 0) {
+                    gpuMemoryOrder = CE_NONE;
+                } else {
+                    printf("Invalid Memory Order: %s\n", optarg);
+                    abort();
+                }
+                break;
+            case 'c': 
+                if (strcmp(optarg, "acq") == 0) {
+                    cpuMemoryOrder = CE_ACQ;
+                } else if (strcmp(optarg, "rel") == 0) {
+                    cpuMemoryOrder = CE_REL;
+                } else if (strcmp(optarg, "none") == 0) {
+                    cpuMemoryOrder = CE_NONE;
                 } else {
                     printf("Invalid Memory Order: %s\n", optarg);
                     abort();
@@ -227,7 +242,8 @@ int main(int argc, char* argv[]) {
     SAFE(cudaMemcpy(largeObjectListOrder, localOrder, sizeof(int) * *count, cudaMemcpyHostToDevice));
 
     printf("\nUsing %s for Objects\n", memoryType == CE_DRAM ? "cudaMallocHost" : memoryType == CE_UM ? "cudaMallocManaged" : "cudaMalloc");
-    printf("Per-Iteration Loads: %s\n\n", memoryOrder == CE_ACQ ? "acquire" : memoryOrder == CE_REL ? "release" : memoryOrder == CE_ACQ_ACQ ? "acq/acq" : "acq/rel");
+    printf("Per-Iteration Loads: %s\n\n", 
+    gpuMemoryOrder == CE_ACQ ? "acquire" : gpuMemoryOrder == CE_REL ? "release" : gpuMemoryOrder == CE_ACQ_ACQ ? "acq/acq" : gpuMemoryOrder == CE_ACQ_REL ? "acq/rel" : "non-atomic");
 
 
     //randomly pad all the objects
@@ -254,10 +270,30 @@ int main(int argc, char* argv[]) {
             begin[CPUEventCount] = std::chrono::high_resolution_clock::now();
             switch (operationSequence[i].action) {
                 case CE_LOAD:
-                    CPUListConsumer(flag, largeObjectList, localConsumer, localOrder, count);
+                    switch (cpuMemoryOrder) {
+                        case CE_ACQ:
+                            CPUListConsumer_acq(flag, largeObjectList, localConsumer, localOrder, count);
+                            break;
+                        case CE_REL:
+                            CPUListConsumer_rel(flag, largeObjectList, localConsumer, localOrder, count);
+                            break;
+                        case CE_NONE:
+                            CPUListConsumer(flag, largeObjectList, localConsumer, localOrder, count);
+                            break;
+                    }
+                    // CPUListConsumer(flag, largeObjectList, localConsumer, localOrder, count);
                     break;
                 case CE_STORE:
-                    CPUListProducer(flag, largeObjectList, localOrder, count);
+                    switch (cpuMemoryOrder) {
+                        case CE_NONE:
+                            CPUListProducer(flag, largeObjectList, localOrder, count);
+                            break;
+                        case CE_ACQ:
+                        case CE_REL:
+                            CPUListProducer_rel(flag, largeObjectList, localOrder, count);
+                            break;
+                    }
+                    // CPUListProducer(flag, largeObjectList, localOrder, count);
                     break;
             }
             end[CPUEventCount++] = std::chrono::high_resolution_clock::now();
@@ -266,7 +302,7 @@ int main(int argc, char* argv[]) {
             switch (operationSequence[i].action) {
                 case CE_LOAD:
                     // GPUListConsumer<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                    switch (memoryOrder) {
+                    switch (gpuMemoryOrder) {
                         case CE_ACQ:
                             GPUListConsumer_acq<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
                             break;
@@ -279,11 +315,23 @@ int main(int argc, char* argv[]) {
                         case CE_ACQ_REL:
                             GPUListConsumer_acq_rel<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
                             break;
+                        case CE_NONE:
+                            GPUListConsumer<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                            break;
                     }
                     SAFE(cudaMemcpy(&localBeforeLoop[GPUEventCount], beforeLoop[GPUEventCount], sizeof(unsigned int), cudaMemcpyDeviceToHost));
                     break;
                 case CE_STORE:
-                    GPUListProducer<<<1,1>>>(flag, largeObjectList, largeObjectListOrder, count);
+                    switch (gpuMemoryOrder) {
+                        case CE_NONE:
+                            GPUListProducer<<<1,1>>>(flag, largeObjectList, largeObjectListOrder, count);
+                            break;
+                        case CE_ACQ:
+                        case CE_REL:
+                            GPUListProducer_rel<<<1,1>>>(flag, largeObjectList, largeObjectListOrder, count);
+                            break;
+                    }
+                    // GPUListProducer<<<1,1>>>(flag, largeObjectList, largeObjectListOrder, count);
                     break;
             }
             cudaEventRecord(stop[GPUEventCount]);
