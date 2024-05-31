@@ -17,18 +17,18 @@ for file in os.listdir('.'):
         print("Renaming", file, "to", new_filename)
         os.rename(file, new_filename)
         
-        for order in ['acq', 'rel', 'acq-acq', 'acq-rel']:
-            for mem_type in ['GDDR', 'UM', 'DRAM']:
-                print("Running", new_filename, "with", order, "and", mem_type)
-                cuda_explorer_output = subprocess.run([f'./{new_filename}', '-n', '512', '-o', 'Cgg', '-m', mem_type, '-c', order], capture_output=True)
-                
-                with open(f'{new_filename.replace(".out", f"_{order}_{mem_type}.txt")}', 'w') as f:
-                    f.write(cuda_explorer_output.stdout.decode('utf-8'))
+        for order in ['acq', 'rel', 'none']: #'acq-acq', 'acq-rel', 'none']:
+                for mem_type in ['GDDR', 'UM', 'DRAM']:
+                    print("Running", new_filename, "with", order, "and", mem_type)
+                    cuda_explorer_output = subprocess.run([f'./{new_filename}', '-n', '128', '-o', 'Cgg', '-m', mem_type, '-c', order, '-g', order], capture_output=True)
+                    
+                    with open(f'{new_filename.replace(".out", f"_{order}_{mem_type}.txt")}', 'w') as f:
+                        f.write(cuda_explorer_output.stdout.decode('utf-8'))
 
-        for order in ['acq', 'rel', 'acq-acq', 'acq-rel']:
-            for mem_type in ['UM', 'DRAM']:
-                print("Running", new_filename, "with", order, "and", mem_type)
-                cuda_explorer_output = subprocess.run([f'./{new_filename}', '-n', '512', '-o', 'PcCggPgCccggcc', '-m', mem_type, '-c', order], capture_output=True)
-                
-                with open(f'{new_filename.replace(".out", f"_{order}_{mem_type}_PcCggPgCccggcc.txt")}', 'w') as f:
-                    f.write(cuda_explorer_output.stdout.decode('utf-8'))
+        for order in ['acq', 'rel', 'none']: # 'acq-acq', 'acq-rel', 'none']:
+                for mem_type in ['UM', 'DRAM']:
+                    print("Running", new_filename, "with", order, "and", mem_type)
+                    cuda_explorer_output = subprocess.run([f'./{new_filename}', '-n', '128', '-o', 'PcCggPgCccggcc', '-m', mem_type, '-c', order, '-g', order], capture_output=True)
+                    
+                    with open(f'{new_filename.replace(".out", f"_{order}_{mem_type}_PcCggPgCccggcc.txt")}', 'w') as f:
+                        f.write(cuda_explorer_output.stdout.decode('utf-8'))

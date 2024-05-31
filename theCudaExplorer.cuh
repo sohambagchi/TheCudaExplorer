@@ -6,7 +6,7 @@
 
 // Uncomment line below to enable release/acquire flags
 // #define RC
-#define PADDING_LENGTH 33554432 >> 1
+#define PADDING_LENGTH 1
 
 // #define SCOPE cuda::thread_scope_thread
 // #define LOAD1 cuda::memory_order_acquire
