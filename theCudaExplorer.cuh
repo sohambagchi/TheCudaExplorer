@@ -6,7 +6,7 @@
 
 // Uncomment line below to enable release/acquire flags
 // #define RC
-#define PADDING_LENGTH 1
+// #define PADDING_LENGTH 33554432 >> 1
 
 // #define SCOPE cuda::thread_scope_thread
 // #define LOAD1 cuda::memory_order_acquire
@@ -38,12 +38,22 @@ typedef enum {
     CE_NONE,
 } CEOrder;
 
+typedef enum {
+    CE_1K,
+    CE_10K,
+    CE_100K,
+    CE_1M,
+    CE_10M,
+    CE_100M,
+    CE_1B,
+    CE_BASE,
+} CECount;
+
 typedef struct {
     CEDevice device;
     CEAction action;
     int total;
 } CEOperation;
-
 
 struct LargeObject {
     char padding1[PADDING_LENGTH];
@@ -60,6 +70,136 @@ struct LargeLinkedObject {
     struct LargeLinkedObject *next;
 };
 
+__global__ void EmptyKernel(int *count, unsigned int *before, unsigned int *after) {
+  // *before = clock64();
+  // for (int i = 0; i < 1000; i++) {
+    for (int j = 0; j < 128; j++) {
+      asm volatile("");
+    }
+  // }
+  // *after = clock64();
+  // return;
+}
+
+template <typename T>
+__global__ void GPUListConsumer_1K(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
+
+  *before = clock64();
+  for (int j = 0; j < 1000; j++) {
+    for (int i = 0; i < _count; i++) {
+      result[i] = (ptr1[order[i]]).data_na;
+    }
+  }
+  *after = clock64();
+
+}
+
+template <typename T>
+__global__ void GPUListConsumer_10K(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
+
+  *before = clock64();
+  for (int j = 0; j < 10000; j++) {
+    for (int i = 0; i < _count; i++) {
+      result[i] = (ptr1[order[i]]).data_na;
+    }
+  }
+  *after = clock64();
+
+}
+
+template <typename T>
+__global__ void GPUListConsumer_100K(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
+
+  *before = clock64();
+  for (int j = 0; j < 100000; j++) {
+    for (int i = 0; i < _count; i++) {
+      result[i] = (ptr1[order[i]]).data_na;
+    }
+  }
+  *after = clock64();
+
+}
+
+template <typename T>
+__global__ void GPUListConsumer_1M(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
+
+  *before = clock64();
+  for (int j = 0; j < 1000000; j++) {
+    for (int i = 0; i < _count; i++) {
+      result[i] = (ptr1[order[i]]).data_na;
+    }
+  }
+  *after = clock64();
+
+}
+
+template <typename T>
+__global__ void GPUListConsumer_10M(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
+
+  *before = clock64();
+  for (int j = 0; j < 10000000; j++) {
+    for (int i = 0; i < _count; i++) {
+      result[i] = (ptr1[order[i]]).data_na;
+    }
+  }
+  *after = clock64();
+
+}
+
+template <typename T>
+__global__ void GPUListConsumer_100M(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
+
+  *before = clock64();
+  for (int j = 0; j < 100000000; j++) {
+    for (int i = 0; i < _count; i++) {
+      result[i] = (ptr1[order[i]]).data_na;
+    }
+  }
+  *after = clock64();
+
+}
+
+template <typename T>
+__global__ void GPUListConsumer_1B(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
+
+  *before = clock64();
+  for (int j = 0; j < 1000000000; j++) {
+    for (int i = 0; i < _count; i++) {
+      result[i] = (ptr1[order[i]]).data_na;
+    }
+  }
+  *after = clock64();
+
+}
+
 template <typename T>
 __global__ void GPUListConsumer(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
   #ifdef RC
@@ -70,8 +210,118 @@ __global__ void GPUListConsumer(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *
   *before = clock64();
   for (int i = 0; i < _count; i++) {
     result[i] = (ptr1[order[i]]).data_na;
-    // result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_relaxed);
-    // result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
+  }
+  *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_1K(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 1000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+        }
+    }
+    *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_10K(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 10000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+        }
+    }
+    *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_100K(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 100000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+        }
+    }
+    *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_1M(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
+
+  *before = clock64();
+  for (int j = 0; j < 1000000; j++) {
+    for (int i = 0; i < _count; i++) {
+      result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+    }
+  }
+  *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_10M(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
+
+  *before = clock64();
+  for (int j = 0; j < 10000000; j++) {
+    for (int i = 0; i < _count; i++) {
+      result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+    }
+  }
+  *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_100M(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
+
+  *before = clock64();
+  for (int j = 0; j < 100000000; j++) {
+    for (int i = 0; i < _count; i++) {
+      result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+    }
+  }
+  *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_1B(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
+
+  *before = clock64();
+  for (int j = 0; j < 1000000000; j++) {
+    for (int i = 0; i < _count; i++) {
+      result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+    }
   }
   *after = clock64();
 }
@@ -87,10 +337,120 @@ __global__ void GPUListConsumer_acq(cuda::atomic<int>* flag, T* ptr1, T* ptr2, i
   *before = clock64();
   for (int i = 0; i < _count; i++) {
     result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
-    // result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_acquire);
-    // result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
   }
   *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_rel_1K(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 1000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
+        }
+    }
+    *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_rel_10K(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 10000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
+        }
+    }
+    *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_rel_100K(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 100000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
+        }
+    }
+    *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_rel_1M(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
+
+  *before = clock64();
+  for (int j = 0; j < 1000000; j++) {
+    for (int i = 0; i < _count; i++) {
+      result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
+    }
+  }
+  *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_rel_10M(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 10000000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
+        }
+    }
+    *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_rel_100M(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 100000000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
+        }
+    }
+    *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_rel_1B(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 1000000000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
+        }
+    }
+    *after = clock64();
 }
 
 template <typename T>
@@ -102,11 +462,128 @@ __global__ void GPUListConsumer_rel(cuda::atomic<int>* flag, T* ptr1, T* ptr2, i
 
   *before = clock64();
   for (int i = 0; i < _count; i++) {
-    // result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
-    // result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_acquire);
     result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
   }
   *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_acq_1K(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 1000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+            result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_acquire);
+        }
+    }
+    *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_acq_10K(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 10000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+            result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_acquire);
+        }
+    }
+    *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_acq_100K(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 100000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+            result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_acquire);
+        }
+    }
+    *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_acq_1M(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
+
+  *before = clock64();
+  for (int j = 0; j < 1000000; j++) {
+    for (int i = 0; i < _count; i++) {
+      result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+      result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_acquire);
+    }
+  }
+  *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_acq_10M(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 10000000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+            result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_acquire);
+        }
+    }
+    *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_acq_100M(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 100000000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+            result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_acquire);
+        }
+    }
+    *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_acq_1B(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 1000000000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+            result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_acquire);
+        }
+    }
+    *after = clock64();
 }
 
 template <typename T>
@@ -120,9 +597,127 @@ __global__ void GPUListConsumer_acq_acq(cuda::atomic<int>* flag, T* ptr1, T* ptr
   for (int i = 0; i < _count; i++) {
     result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
     result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_acquire);
-    // result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
   }
   *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_rel_1K(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 1000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+            result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
+        }
+    }
+    *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_rel_10K(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 10000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+            result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
+        }
+    }
+    *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_rel_100K(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 100000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+            result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
+        }
+    }
+    *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_rel_1M(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
+
+  *before = clock64();
+  for (int j = 0; j < 1000000; j++) {
+    for (int i = 0; i < _count; i++) {
+      result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+      result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
+    }
+  }
+  *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_rel_10M(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 10000000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+            result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
+        }
+    }
+    *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_rel_100M(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 100000000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+            result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
+        }
+    }
+    *after = clock64();
+}
+
+template <typename T>
+__global__ void GPUListConsumer_acq_rel_1B(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count, unsigned int *before, unsigned int *after) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    int _count = *count;
+
+    *before = clock64();
+    for (int j = 0; j < 1000000000; j++) {
+        for (int i = 0; i < _count; i++) {
+            result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+            result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
+        }
+    }
+    *after = clock64();
 }
 
 template <typename T>
@@ -135,7 +730,6 @@ __global__ void GPUListConsumer_acq_rel(cuda::atomic<int>* flag, T* ptr1, T* ptr
   *before = clock64();
   for (int i = 0; i < _count; i++) {
     result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
-    // result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_acquire);
     result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
   }
   *after = clock64();

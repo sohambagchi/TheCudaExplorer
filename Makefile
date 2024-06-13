@@ -1,6 +1,6 @@
-NVCC = nvc++
-NVCCFLAGS = -g -gpu=mem:unified:nomanagedalloc
-# NVCCFLAGS = -arch=sm_80
+NVCC = nvcc
+# NVCCFLAGS = -g -gpu=mem:unified:nomanagedalloc
+NVCCFLAGS = -g -Xcompiler -O0 -Xcicc -O3 -arch=sm_87
 SOURCES = theCudaExplorer.cu
 HEADERS = theCudaExplorer.cuh
 PTX = theCudaExplorer.ptx
@@ -9,26 +9,27 @@ CUOBJDUMP = cuobjdump
 CUOBJDUMPFLAGS = -sass
 SASS = theCudaExplorer.sass
 
-SCOPES = cuda::thread_scope_thread cuda::thread_scope_block cuda::thread_scope_device cuda::thread_scope_system
-# LOAD_ORDER = cuda::memory_order_acquire cuda::memory_order_relaxed
+SCOPES = cuda::thread_scope_thread  cuda::thread_scope_system # cuda::thread_scope_block cuda::thread_scope_device
+SIZES = 241664 479228 16777216
 
-all: $(OUTPUT) #ptx
+all: $(OUTPUT) ptx
 
 $(OUTPUT): $(SOURCES) $(HEADERS)
 	for scope in $(SCOPES); do \
-		$(NVCC) $(NVCCFLAGS) -DSCOPE=$$scope -o $(OUTPUT)_$$scope.out $(SOURCES); \
+		for size in $(SIZES); do \
+			$(NVCC) $(NVCCFLAGS) -DSCOPE=$$scope -DPADDING_LENGTH=$$size -o $(OUTPUT)_$$scope-$$size.out $(SOURCES); \
+		done; \
 	done
-# $(NVCC) $(NVCCFLAGS)  -o $(OUTPUT) $(SOURCES)
 
 ptx: $(SOURCES) $(HEADERS)
 	for scope in $(SCOPES); do \
-		$(NVCC) $(NVCCFLAGS) -DSCOPE=$$scope -ptx -src-in-ptx $(SOURCES); \
-		cp $(PTX) $(PTX)_$$scope-87; \
-		$(CUOBJDUMP) $(CUOBJDUMPFLAGS) $(OUTPUT)_$$scope.out > $(SASS)_$$scope-87; \
+		for size in $(SIZES); do \
+			$(NVCC) $(NVCCFLAGS) -DSCOPE=$$scope -DPADDING_LENGTH=$$size -ptx -src-in-ptx $(SOURCES); \
+			cp $(PTX) $(PTX)_$$scope-$$size; \
+			$(CUOBJDUMP) $(CUOBJDUMPFLAGS) $(OUTPUT)_$$scope-$$size.out > $(SASS)_$$scope-$$size; \
+		done; \
 	done
-# $(NVCC) $(NVCCFLAGS) -ptx -src-in-ptx $(SOURCES)
-# $(CUOBJDUMP) $(CUOBJDUMPFLAGS) $(OUTPUT) > $(SASS)
-
+	python3 cleanup_executables_1.py clean
 
 clean:
 	rm -f $(OUTPUT) $(PTX) $(SASS)

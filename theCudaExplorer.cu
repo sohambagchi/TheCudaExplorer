@@ -91,8 +91,8 @@ void printResults(CEOperation * sequence, int numCPUEvents, int numGPUEvents, in
 
     for (int i = 0, j = 0, k = 0; i < sequence[0].total; i++) {
         printf("%s %s\n", sequence[i].device == CE_CPU ? "CPU" : "\t\tGPU", sequence[i].action == CE_LOAD ? "ld" : "st");
-        printf("%s    (%ld ns)\n", sequence[i].device == CE_CPU ? "" : "\t\t", sequence[i].device == CE_CPU ? durations[j++] / *count : (int64_t) (milliseconds[k] / *count));
-        printf("%s    (%u cycles)\n", sequence[i].device == CE_CPU ? "" : "\t\t", sequence[i].device == CE_CPU ? 0 : (loopDurations[k++] / *count));
+        printf("%s    (%ld ns)\t[%ld ns]\n", sequence[i].device == CE_CPU ? "" : "\t\t", sequence[i].device == CE_CPU ? durations[j] / *count : (int64_t) (milliseconds[k] / *count), sequence[i].device == CE_CPU ? durations[j++] : (int64_t) (milliseconds[k]));
+        printf("%s    (%u cycles)\t[%u ns]\n", sequence[i].device == CE_CPU ? "" : "\t\t", sequence[i].device == CE_CPU ? 0 : (loopDurations[k] / *count), sequence[i].device == CE_CPU ? 0 : loopDurations[k++]);
     }
 
 }
@@ -109,10 +109,13 @@ int main(int argc, char* argv[]) {
     CEOperation * operationSequence;
     CEOrder gpuMemoryOrder;
     CEOrder cpuMemoryOrder;
-    int numObjects;
+    CECount outerLoopCount;
+    int numObjects;    
+
+    bool warmup = false;
     
-        int opt;
-    while ((opt = getopt(argc, argv, "n:o:m:c:g:h")) != -1) {
+    int opt;
+    while ((opt = getopt(argc, argv, "n:o:m:c:g:l:wh")) != -1) {
         switch (opt) {
             case 'n':
                 numObjects = atoi(optarg);
@@ -153,12 +156,41 @@ int main(int argc, char* argv[]) {
                     cpuMemoryOrder = CE_ACQ;
                 } else if (strcmp(optarg, "rel") == 0) {
                     cpuMemoryOrder = CE_REL;
+                } else if (strcmp(optarg, "acq-rel") == 0) {
+                    cpuMemoryOrder = CE_ACQ;
+                } else if (strcmp(optarg, "acq-acq") == 0) {
+                    cpuMemoryOrder = CE_ACQ;
                 } else if (strcmp(optarg, "none") == 0) {
                     cpuMemoryOrder = CE_NONE;
                 } else {
                     printf("Invalid Memory Order: %s\n", optarg);
                     abort();
                 }
+                break;
+            case 'l':
+                if (strcmp(optarg, "1K") == 0) {
+                    outerLoopCount = CE_1K;
+                } else if (strcmp(optarg, "10K") == 0) {
+                    outerLoopCount = CE_10K;
+                } else if (strcmp(optarg, "100K") == 0) {
+                    outerLoopCount = CE_100K;
+                } else if (strcmp(optarg, "1M") == 0) {
+                    outerLoopCount = CE_1M;
+                } else if (strcmp(optarg, "10M") == 0) {
+                    outerLoopCount = CE_10M;
+                } else if (strcmp(optarg, "100M") == 0) {
+                    outerLoopCount = CE_100M;
+                } else if (strcmp(optarg, "1B") == 0) {
+                    outerLoopCount = CE_1B;
+                } else if (strcmp(optarg, "1") == 0) {
+                    outerLoopCount = CE_BASE;
+                } else {
+                    printf("Invalid Loop Count: %s\n", optarg);
+                    abort();
+                }
+                break;
+            case 'w':
+                warmup = true;
                 break;
             case 'h':
                 printHelp();
@@ -171,6 +203,8 @@ int main(int argc, char* argv[]) {
 
     int numCPUEvents = 0, numGPUEvents = 0;
 
+    int GPUConsumeFirst = -1;
+
     // identify CPU and GPU events separately for timers
     for (int i = 0; i < operationSequence[0].total; i++) {
         // printf("%s %s\n", operationSequence[i].device == CE_CPU ? "CPU" : "\t\tGPU", operationSequence[i].action == CE_LOAD ? "ld" : "st");
@@ -178,6 +212,11 @@ int main(int argc, char* argv[]) {
             numCPUEvents++;
         } else {
             numGPUEvents++;
+            if (GPUConsumeFirst == -1 && operationSequence[i].action == CE_LOAD) {
+                GPUConsumeFirst = 1;
+            } else if (GPUConsumeFirst == -1 && operationSequence[i].action == CE_STORE) {
+                GPUConsumeFirst = 0;
+            }
         }
     }
 
@@ -215,7 +254,7 @@ int main(int argc, char* argv[]) {
 
     *count = numObjects;
 
-    printf("Size of Object: %.2f MB\n", sizeof(struct LargeObject) / (1024.0 * 1024.0));
+    printf("Size of Object: %.2f MB, %.2f KB\n", sizeof(struct LargeObject) / (1024.0 * 1024.0), sizeof(struct LargeObject) / 1024.0);
     printf("Number of Objects: %d\n", *count);
     printf("CPU Events Timed: %d\t GPU Events Timed: %d\n", numCPUEvents, numGPUEvents);
 
@@ -264,6 +303,28 @@ int main(int argc, char* argv[]) {
     int CPUEventCount = 0;
     int GPUEventCount = 0;
 
+    if (warmup && GPUConsumeFirst == 1) {
+        printf("Warming up GPU\n");
+        switch (gpuMemoryOrder) {
+            case CE_ACQ:
+                GPUListConsumer_acq<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                break;
+            case CE_REL:
+                GPUListConsumer_rel<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                break;
+            case CE_ACQ_ACQ:
+                GPUListConsumer_acq_acq<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                break;
+            case CE_ACQ_REL:
+                GPUListConsumer_acq_rel<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                break;
+            case CE_NONE:
+                GPUListConsumer<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                break;
+        }
+        cudaDeviceSynchronize();
+    }
+
     // do all the operations in the order specified
     for (int i = 0; i < operationSequence[0].total; i++) {
         if (operationSequence[i].device == CE_CPU) {
@@ -281,7 +342,6 @@ int main(int argc, char* argv[]) {
                             CPUListConsumer(flag, largeObjectList, localConsumer, localOrder, count);
                             break;
                     }
-                    // CPUListConsumer(flag, largeObjectList, localConsumer, localOrder, count);
                     break;
                 case CE_STORE:
                     switch (cpuMemoryOrder) {
@@ -293,7 +353,6 @@ int main(int argc, char* argv[]) {
                             CPUListProducer_rel(flag, largeObjectList, localOrder, count);
                             break;
                     }
-                    // CPUListProducer(flag, largeObjectList, localOrder, count);
                     break;
             }
             end[CPUEventCount++] = std::chrono::high_resolution_clock::now();
@@ -301,22 +360,149 @@ int main(int argc, char* argv[]) {
             cudaEventRecord(start[GPUEventCount]);
             switch (operationSequence[i].action) {
                 case CE_LOAD:
-                    // GPUListConsumer<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
                     switch (gpuMemoryOrder) {
                         case CE_ACQ:
-                            GPUListConsumer_acq<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                            switch (outerLoopCount) {
+                                case CE_1K:
+                                    GPUListConsumer_acq_1K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_10K:
+                                    GPUListConsumer_acq_10K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_100K:
+                                    GPUListConsumer_acq_100K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+
+                                case CE_1M:
+                                    GPUListConsumer_acq_1M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_10M:
+                                    GPUListConsumer_acq_10M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_100M:
+                                    GPUListConsumer_acq_100M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+
+                                case CE_1B:
+                                    GPUListConsumer_acq_1B<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+
+                                case CE_BASE:
+                                    GPUListConsumer_acq<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                            }
                             break;
                         case CE_REL:
-                            GPUListConsumer_rel<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                            switch (outerLoopCount) {
+                                case CE_1K:
+                                    GPUListConsumer_rel_1K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_10K:
+                                    GPUListConsumer_rel_10K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_100K:
+                                    GPUListConsumer_rel_100K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_1M:
+                                    GPUListConsumer_rel_1M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_10M:
+                                    GPUListConsumer_rel_10M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_100M:
+                                    GPUListConsumer_rel_100M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_1B:
+                                    GPUListConsumer_rel_1B<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_BASE:
+                                    GPUListConsumer_rel<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                            }
                             break;
                         case CE_ACQ_ACQ:
-                            GPUListConsumer_acq_acq<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                            switch (outerLoopCount) {
+                                case CE_1K:
+                                    GPUListConsumer_acq_acq_1K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_10K:
+                                    GPUListConsumer_acq_acq_10K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_100K:
+                                    GPUListConsumer_acq_acq_100K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_1M:
+                                    GPUListConsumer_acq_acq_1M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_10M:
+                                    GPUListConsumer_acq_acq_10M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_100M:
+                                    GPUListConsumer_acq_acq_100M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_1B:
+                                    GPUListConsumer_acq_acq_1B<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_BASE:
+                                    GPUListConsumer_acq_acq<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                            }
                             break;
                         case CE_ACQ_REL:
-                            GPUListConsumer_acq_rel<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                            switch (outerLoopCount) {
+                                case CE_1K:
+                                    GPUListConsumer_acq_rel_1K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_10K:
+                                    GPUListConsumer_acq_rel_10K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_100K:
+                                    GPUListConsumer_acq_rel_100K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_1M:
+                                    GPUListConsumer_acq_rel_1M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_10M:
+                                    GPUListConsumer_acq_rel_10M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_100M:
+                                    GPUListConsumer_acq_rel_100M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_1B:
+                                    GPUListConsumer_acq_rel_1B<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_BASE:
+                                    GPUListConsumer_acq_rel<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                            }
                             break;
                         case CE_NONE:
-                            GPUListConsumer<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                            switch (outerLoopCount) {
+                                case CE_1K:
+                                    GPUListConsumer_1K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_10K:
+                                    GPUListConsumer_10K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_100K:
+                                    GPUListConsumer_100K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_1M:
+                                    GPUListConsumer_1M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_10M:
+                                    GPUListConsumer_10M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_100M:
+                                    GPUListConsumer_100M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_1B:
+                                    GPUListConsumer_1B<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                                case CE_BASE:
+                                    GPUListConsumer<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                                    break;
+                            }
                             break;
                     }
                     SAFE(cudaMemcpy(&localBeforeLoop[GPUEventCount], beforeLoop[GPUEventCount], sizeof(unsigned int), cudaMemcpyDeviceToHost));
@@ -324,14 +510,14 @@ int main(int argc, char* argv[]) {
                 case CE_STORE:
                     switch (gpuMemoryOrder) {
                         case CE_NONE:
-                            GPUListProducer<<<1,1>>>(flag, largeObjectList, largeObjectListOrder, count);
+                            EmptyKernel<<<1,1>>>(count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
+                            // GPUListProducer<<<1,1>>>(flag, largeObjectList, largeObjectListOrder, count);
                             break;
                         case CE_ACQ:
                         case CE_REL:
                             GPUListProducer_rel<<<1,1>>>(flag, largeObjectList, largeObjectListOrder, count);
                             break;
                     }
-                    // GPUListProducer<<<1,1>>>(flag, largeObjectList, largeObjectListOrder, count);
                     break;
             }
             cudaEventRecord(stop[GPUEventCount]);
@@ -360,17 +546,4 @@ int main(int argc, char* argv[]) {
     printf("\n----------------------\n\n\n");
 
     return 0;
-
-
-    // LABEL:MH40
-    // struct LargeObject ** remoteObjectList;
-    
-    // SAFE(cudaMallocHost(&remoteObjectList, sizeof(struct LargeObject*) * *count));
-      
-    // for (int i = 0; i < (*count); i++) {
-    //     SAFE(cudaMalloc(&remoteObjectList[*localOrder[i]], sizeof(struct LargeObject)));
-    // }
-
-    // SAFE(cudaMemcpy(remoteObjectList[*localOrder[i]], largeObjectList[*localOrder[i]], sizeof(struct LargeObject), cudaMemcpyHostToDevice));
-
 }
