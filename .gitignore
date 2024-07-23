@@ -1,6 +1,9 @@
+.venv/
+.vscode/
 theCudaExplorer
 *.nsys-rep
 *.sqlite
+*.txt
+*.out
+*.sass
 *.ptx
-reports/
-results/
