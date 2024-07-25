@@ -299,16 +299,16 @@ int main(int argc, char* argv[]) {
 
     SAFE(cudaMallocHost(&flag, sizeof(cuda::atomic<int>)));
     SAFE(cudaMallocHost(&localConsumer, sizeof(int) * *count));
-    SAFE(cudaMallocHost(&localLoadedConsumer, sizeof(int) * *count * PADDING_SIZE));
+    SAFE(cudaMallocHost(&localLoadedConsumer, sizeof(int) * *count * PADDING_LENGTH));
     SAFE(cudaMallocHost(&largeObjectListOrder, sizeof(int) * *count));
     SAFE(cudaMallocHost(&localOrder, sizeof(int) * *count));
 
     if (memoryType == CE_GDDR) {
         SAFE(cudaMalloc(&largeObjectListConsumer, sizeof(int) * *count));
-        SAFE(cudaMalloc(&loadedListConsumer, sizeof(int) * *count * PADDING_SIZE));
+        SAFE(cudaMalloc(&loadedListConsumer, sizeof(int) * *count * PADDING_LENGTH / 4));
     } else {
         SAFE(cudaMallocHost(&largeObjectListConsumer, sizeof(int) * *count));
-        SAFE(cudaMallocHost(&loadedListConsumer, sizeof(int) * *count * PADDING_SIZE));
+        SAFE(cudaMallocHost(&loadedListConsumer, sizeof(int) * *count * PADDING_LENGTH / 4));
     }
 
     if (memoryType == CE_DRAM) {
@@ -370,7 +370,7 @@ int main(int argc, char* argv[]) {
 
             for (int i = 0; i < *count; i++) {
                 for (int z = 0; z < 2; z++) {
-                    for (int j = 0; j < PADDING_SIZE; j++) {
+                    for (int j = 0; j < PADDING_LENGTH / 4; j++) {
                         localCopy[i].data_na_list[j] = i * z * j;
                         localCopy[i].data_list[j].store(i * z * j);
                     }
@@ -383,7 +383,7 @@ int main(int argc, char* argv[]) {
         } else {
             for (int i = 0; i < *count; i++) {
                 for (int z = 0; z < 2; z++) {
-                    for (int j = 0; j < PADDING_SIZE; j++) {
+                    for (int j = 0; j < PADDING_LENGTH / 4; j++) {
                         largeObjectList[i].data_na_list[j] = i * z * j;
                         largeObjectList[i].data_list[j].store(i * z * j);
                     }
@@ -496,6 +496,9 @@ int main(int argc, char* argv[]) {
     }
 
     cudaDeviceSynchronize();
+
+    // SAFE(cudaMemcpy(localBeforeLoop, beforeLoop, sizeof(unsigned int *) * numGPUEvents, cudaMemcpyDeviceToHost));
+    // SAFE(cudaMemcpy(localAfterLoop, afterLoop, sizeof(unsigned int *) * numGPUEvents, cudaMemcpyDeviceToHost));
 
     for (int i = 0; i < numGPUEvents; i++) {
         milliseconds[i] = 0;

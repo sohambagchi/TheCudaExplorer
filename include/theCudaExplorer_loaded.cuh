@@ -12,7 +12,7 @@ __global__ void GPULoadedListConsumer(cuda::atomic<int>* flag, T* ptr, int **res
 
     *before = clock64();
     for (int i = 0; i < _count; i++) {
-      for (int j = 0; j < PADDING_LENGTH; j++) {
+      for (int j = 0; j < PADDING_LENGTH/4; j++) {
         result[i][j] = ptr[order[i]].data_na_list[j];
       }
     }
@@ -29,7 +29,7 @@ __global__ void GPULoadedListConsumer_1K(cuda::atomic<int>* flag, T* ptr, int **
     *before = clock64();
     for (int z = 0; z < 1000; z++) {
       for (int i = 0; i < _count; i++) {
-        for (int j = 0; j < PADDING_LENGTH; j++) {
+        for (int j = 0; j < PADDING_LENGTH/4; j++) {
           result[i][j] = ptr[order[i]].data_na_list[j];
         }
       }
@@ -47,7 +47,7 @@ __global__ void GPULoadedListConsumer_10K(cuda::atomic<int>* flag, T* ptr, int *
     *before = clock64();
     for (int z = 0; z < 10000; z++) {
       for (int i = 0; i < _count; i++) {
-        for (int j = 0; j < PADDING_LENGTH; j++) {
+        for (int j = 0; j < PADDING_LENGTH/4; j++) {
           result[i][j] = ptr[order[i]].data_na_list[j];
         }
       }
@@ -64,7 +64,7 @@ __global__ void GPULoadedListConsumer_acq(cuda::atomic<int>* flag, T* ptr1, T* p
 
   *before = clock64();
   for (int i = 0; i < _count; i++) {
-    for (int j = 0; j < PADDING_LENGTH; j++) {
+    for (int j = 0; j < PADDING_LENGTH/4; j++) {
       result[i][j] = ptr1[order[i]].data_list[j].load(cuda::memory_order_acquire);
     }
   }
@@ -81,7 +81,7 @@ __global__ void GPULoadedListConsumer_acq_1K(cuda::atomic<int>* flag, T* ptr1, T
   *before = clock64();
   for (int z = 0; z < 1000; z++) {
     for (int i = 0; i < _count; i++) {
-      for (int j = 0; j < PADDING_LENGTH; j++) {
+      for (int j = 0; j < PADDING_LENGTH/4; j++) {
         result[i][j] = ptr1[order[i]].data_list[j].load(cuda::memory_order_acquire);
       }
     }
@@ -98,7 +98,7 @@ __global__ void GPULoadedListConsumer_acq_10K(cuda::atomic<int>* flag, T* ptr1, 
   *before = clock64();
   for (int z = 0; z < 10000; z++) {
     for (int i = 0; i < _count; i++) {
-      for (int j = 0; j < PADDING_LENGTH; j++) {
+      for (int j = 0; j < PADDING_LENGTH/4; j++) {
         result[i][j] = ptr1[order[i]].data_list[j].load(cuda::memory_order_acquire);
       }
     }
@@ -114,7 +114,7 @@ __global__ void GPULoadedListConsumer_rel(cuda::atomic<int>* flag, T* ptr1, T* p
 
   *before = clock64();
   for (int i = 0; i < _count; i++) {
-    for (int j = 0; j < PADDING_LENGTH; j++) {
+    for (int j = 0; j < PADDING_LENGTH/4; j++) {
       result[i][j] = ptr1[order[i]].data_list[j].load(cuda::memory_order_relaxed);
     }
   }
@@ -130,7 +130,7 @@ __global__ void GPULoadedListConsumer_rel_1K(cuda::atomic<int>* flag, T* ptr1, T
   *before = clock64();
   for (int z = 0; z < 1000; z++) {
     for (int i = 0; i < _count; i++) {
-      for (int j = 0; j < PADDING_LENGTH; j++) {
+      for (int j = 0; j < PADDING_LENGTH/4; j++) {
         result[i][j] = ptr1[order[i]].data_list[j].load(cuda::memory_order_relaxed);
       }
     }
@@ -147,7 +147,7 @@ __global__ void GPULoadedListConsumer_rel_10K(cuda::atomic<int>* flag, T* ptr1, 
   *before = clock64();
   for (int z = 0; z < 10000; z++) {
     for (int i = 0; i < _count; i++) {
-      for (int j = 0; j < PADDING_LENGTH; j++) {
+      for (int j = 0; j < PADDING_LENGTH/4; j++) {
         result[i][j] = ptr1[order[i]].data_list[j].load(cuda::memory_order_relaxed);
       }
     }
@@ -163,7 +163,7 @@ __global__ void GPULoadedListConsumer_acq_rel(cuda::atomic<int>* flag, T* ptr1, 
 
   *before = clock64();
   for (int i = 0; i < _count; i++) {
-    for (int j = 0; j < PADDING_LENGTH; j++) {
+    for (int j = 0; j < PADDING_LENGTH/4; j++) {
       result[i][j] = ptr1[order[i]].data_list[j].load(cuda::memory_order_acquire);
       result[i][j] = ptr2[order[i]].data_list[j].load(cuda::memory_order_relaxed);
     }
@@ -180,7 +180,7 @@ __global__ void GPULoadedListConsumer_acq_rel_1K(cuda::atomic<int>* flag, T* ptr
   *before = clock64();
   for (int z = 0; z < 1000; z++) {
     for (int i = 0; i < _count; i++) {
-      for (int j = 0; j < PADDING_LENGTH; j++) {
+      for (int j = 0; j < PADDING_LENGTH/4; j++) {
         result[i][j] = ptr1[order[i]].data_list[j].load(cuda::memory_order_acquire);
         result[i][j] = ptr2[order[i]].data_list[j].load(cuda::memory_order_relaxed);
       }
@@ -198,7 +198,7 @@ __global__ void GPULoadedListConsumer_acq_rel_10K(cuda::atomic<int>* flag, T* pt
   *before = clock64();
   for (int z = 0; z < 10000; z++) {
     for (int i = 0; i < _count; i++) {
-      for (int j = 0; j < PADDING_LENGTH; j++) {
+      for (int j = 0; j < PADDING_LENGTH/4; j++) {
         result[i][j] = ptr1[order[i]].data_list[j].load(cuda::memory_order_acquire);
         result[i][j] = ptr2[order[i]].data_list[j].load(cuda::memory_order_relaxed);
       }
@@ -215,7 +215,7 @@ __global__ void GPULoadedListConsumer_acq_acq(cuda::atomic<int>* flag, T* ptr1, 
 
   *before = clock64();
   for (int i = 0; i < _count; i++) {
-    for (int j = 0; j < PADDING_LENGTH; j++) {
+    for (int j = 0; j < PADDING_LENGTH/4; j++) {
       result[i][j] = ptr1[order[i]].data_list[j].load(cuda::memory_order_acquire);
       result[i][j] = ptr2[order[i]].data_list[j].load(cuda::memory_order_acquire);
     }
@@ -232,7 +232,7 @@ __global__ void GPULoadedListConsumer_acq_acq_1K(cuda::atomic<int>* flag, T* ptr
   *before = clock64();
   for (int z = 0; z < 1000; z++) {
     for (int i = 0; i < _count; i++) {
-      for (int j = 0; j < PADDING_LENGTH; j++) {
+      for (int j = 0; j < PADDING_LENGTH/4; j++) {
         result[i][j] = ptr1[order[i]].data_list[j].load(cuda::memory_order_acquire);
         result[i][j] = ptr2[order[i]].data_list[j].load(cuda::memory_order_acquire);
       }
@@ -250,7 +250,7 @@ __global__ void GPULoadedListConsumer_acq_acq_10K(cuda::atomic<int>* flag, T* pt
   *before = clock64();
   for (int z = 0; z < 10000; z++) {
     for (int i = 0; i < _count; i++) {
-      for (int j = 0; j < PADDING_LENGTH; j++) {
+      for (int j = 0; j < PADDING_LENGTH/4; j++) {
         result[i][j] = ptr1[order[i]].data_list[j].load(cuda::memory_order_acquire);
         result[i][j] = ptr2[order[i]].data_list[j].load(cuda::memory_order_acquire);
       }
@@ -266,7 +266,7 @@ __global__ void GPULoadedListProducer(cuda::atomic<int>* flag, T* ptr, int *orde
 
   int _count = *count;
   for (int i = 0; i < _count; i++) {
-    for (int j = 0; j < PADDING_LENGTH; j++) {
+    for (int j = 0; j < PADDING_LENGTH/4; j++) {
       ptr[order[i]].data_na_list[j] = i;
     }
   }
@@ -279,7 +279,7 @@ __global__ void GPULoadedListProducer_rel(cuda::atomic<int>* flag, T* ptr, int *
   #endif
   int _count = *count;
   for (int i = 0; i < _count; i++) {
-    for (int j = 0; j < PADDING_LENGTH; j++) {
+    for (int j = 0; j < PADDING_LENGTH/4; j++) {
       ptr[order[i]].data_list[j].store(i, cuda::memory_order_relaxed);
     }
   }
@@ -296,7 +296,7 @@ __host__ void CPULoadedListConsumer(cuda::atomic<int>* flag, T* ptr, int **resul
   int _count = *count;
 
   for (int i = 0; i < _count; i++) {
-    for (int j = 0; j < PADDING_LENGTH; j++) {
+    for (int j = 0; j < PADDING_LENGTH/4; j++) {
       result[i][j] = ptr[order[i]].data_na_list[j];
     }
   }
@@ -310,7 +310,7 @@ __host__ void CPULoadedListConsumer_acq(cuda::atomic<int>* flag, T* ptr1, int **
   int _count = *count;
 
   for (int i = 0; i < _count; i++) {
-    for (int j = 0; j < PADDING_LENGTH; j++) {
+    for (int j = 0; j < PADDING_LENGTH/4; j++) {
       result[i][j] = ptr1[order[i]].data_list[j].load(cuda::memory_order_acquire);
     }
   }
@@ -324,7 +324,7 @@ __host__ void CPULoadedListConsumer_rel(cuda::atomic<int>* flag, T* ptr1, int **
   int _count = *count;
 
   for (int i = 0; i < _count; i++) {
-    for (int j = 0; j < PADDING_LENGTH; j++) {
+    for (int j = 0; j < PADDING_LENGTH/4; j++) {
       result[i][j] = ptr1[order[i]].data_list[j].load(cuda::memory_order_relaxed);
     }
   }
@@ -338,7 +338,7 @@ __host__ void CPULoadedListConsumer_acq_rel(cuda::atomic<int>* flag, T* ptr1, T*
   int _count = *count;
 
   for (int i = 0; i < _count; i++) {
-    for (int j = 0; j < PADDING_LENGTH; j++) {
+    for (int j = 0; j < PADDING_LENGTH/4; j++) {
       result[i][j] = ptr1[order[i]].data_list[j].load(cuda::memory_order_acquire);
       result[i][j] = ptr2[order[i]].data_list[j].load(cuda::memory_order_relaxed);
     }
@@ -353,7 +353,7 @@ __host__ void CPULoadedListConsumer_acq_acq(cuda::atomic<int>* flag, T* ptr1, T*
   int _count = *count;
 
   for (int i = 0; i < _count; i++) {
-    for (int j = 0; j < PADDING_LENGTH; j++) {
+    for (int j = 0; j < PADDING_LENGTH/4; j++) {
       result[i][j] = ptr1[order[i]].data_list[j].load(cuda::memory_order_acquire);
       result[i][j] = ptr2[order[i]].data_list[j].load(cuda::memory_order_acquire);
     }
@@ -367,7 +367,7 @@ __host__ void CPULoadedListProducer(cuda::atomic<int>* flag, T* ptr, int *order,
   #endif
   int _count = *count;
   for (int i = 0; i < _count; i++) {
-    for (int j = 0; j < PADDING_LENGTH; j++) {
+    for (int j = 0; j < PADDING_LENGTH/4; j++) {
       ptr[order[i]].data_na_list[j] = i;
     }
   }
@@ -383,7 +383,7 @@ __host__ void CPULoadedListProducer_rel(cuda::atomic<int>* flag, T* ptr, int *or
   #endif
   int _count = *count;
   for (int i = 0; i < _count; i++) {
-    for (int j = 0; j < PADDING_LENGTH; j++) {
+    for (int j = 0; j < PADDING_LENGTH/4; j++) {
       ptr[order[i]].data_list[j].store(i, cuda::memory_order_relaxed);
     }
   }

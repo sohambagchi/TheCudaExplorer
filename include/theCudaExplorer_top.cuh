@@ -14,16 +14,13 @@
 
 // Uncomment line below to enable release/acquire flags
 // #define RC
-// #define PADDING_LENGTH 33554432 >> 1
 
-// #define SCOPE cuda::thread_scope_thread
-// #define LOAD1 cuda::memory_order_acquire
-// #define LOAD2 cuda::memory_order_relaxed
+#ifndef PADDING_LENGTH
+#define PADDING_LENGTH 4
+#endif
 
-// #define TWO_LOADS
-
-#ifndef PADDING_SIZE
-#define PADDING_SIZE 4
+#ifndef SCOPE
+#define SCOPE cuda::thread_scope_system
 #endif
 
 typedef enum {
@@ -92,9 +89,9 @@ struct LargeLinkedObject {
 };
 
 struct LoadedLargeObject {
-    int data_na_list[PADDING_LENGTH];
-    cuda::atomic<int, SCOPE> data_list[PADDING_LENGTH];
+    int data_na_list[PADDING_LENGTH/4];
     int data_na;
+    cuda::atomic<int, SCOPE> data_list[PADDING_LENGTH/4];
     cuda::atomic<int, SCOPE> data;
 }; 
 
@@ -264,7 +261,6 @@ void callFunction(const std::vector<int>& params, cuda::atomic<int>* flag, T* pt
                                             GPULinkedListConsumer<<<1,1>>>(flag, ptr, ptr, result, count, before, after);
                                             break;
                                         case CE_LOADED:
-                                            printf("Executing GPULoadedListConsumer\n");
                                             GPULoadedListConsumer<<<1,1>>>(flag, ptr, loadedResult, order, count, before, after);
                                             break;
                                     }
@@ -278,7 +274,6 @@ void callFunction(const std::vector<int>& params, cuda::atomic<int>* flag, T* pt
                                             GPULinkedListConsumer_1K<<<1,1>>>(flag, ptr, ptr, result, count, before, after);
                                             break;
                                         case CE_LOADED:
-                                            printf("Executing GPULoadedListConsumer_1K\n");
                                             GPULoadedListConsumer_1K<<<1,1>>>(flag, ptr, loadedResult, order, count, before, after);
                                             break;
                                     }
