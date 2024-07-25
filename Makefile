@@ -1,8 +1,8 @@
 NVCC = nvcc
 # NVCCFLAGS = -g -gpu=mem:unified:nomanagedalloc
-NVCCFLAGS = -g -Xcompiler -O0 -Xcicc -O3 -arch=sm_87
+NVCCFLAGS = -g -Xcompiler -O0 -Xcicc -O3 -arch=sm_87 -I./include
 SOURCES = theCudaExplorer.cu
-HEADERS = theCudaExplorer.cuh
+HEADERS = ./include/theCudaExplorer_top.cuh ./include/theCudaExplorer_array.cuh ./include/theCudaExplorer_list.cuh ./include/theCudaExplorer_loaded.cuh
 PTX = theCudaExplorer.ptx
 OUTPUT = theCudaExplorer
 CUOBJDUMP = cuobjdump
@@ -19,7 +19,7 @@ SIZES =      12  28  60   92   124  188  252 508 1020 2044 4092 8188 16380 32764
 # SIZES =64KB 320KB 640KB  1MB  2MB  4MB   8MB   16MB  32MB   60MB   117MB  256MB   512MB    1GB      2GB     4GB 
 # SIZES = 479228
 
-all: $(OUTPUT) 
+all: $(OUTPUT) ptx
 
 $(OUTPUT): $(SOURCES) $(HEADERS)
 	for scope in $(SCOPES); do \
@@ -27,14 +27,13 @@ $(OUTPUT): $(SOURCES) $(HEADERS)
 			$(NVCC) $(NVCCFLAGS) -DSCOPE=$$scope -DPADDING_LENGTH=$$size -o $(OUTPUT)_$$scope-$$size.out $(SOURCES); \
 		done; \
 	done
-	python3 cleanup_executables.py clean
 
 ptx: $(SOURCES) $(HEADERS)
 	for scope in $(SCOPES); do \
 		for size in $(SIZES); do \
 			$(NVCC) $(NVCCFLAGS) -DSCOPE=$$scope -DPADDING_LENGTH=$$size -ptx -src-in-ptx $(SOURCES); \
-			cp $(PTX) $(PTX)_$$scope-$$size; \
-			$(CUOBJDUMP) $(CUOBJDUMPFLAGS) $(OUTPUT)_$$scope-$$size.out > $(SASS)_$$scope-$$size; \
+			cp $(PTX) $(PTX)_$$scope-$$size.ptx; \
+			$(CUOBJDUMP) $(CUOBJDUMPFLAGS) $(OUTPUT)_$$scope-$$size.out > $(SASS)_$$scope-$$size.sass; \
 		done; \
 	done
 	python3 cleanup_executables.py clean

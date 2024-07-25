@@ -1,7 +1,9 @@
 #include <cstdio>
 #include <chrono>
 
-#include "theCudaExplorer.cuh"
+#include "include/theCudaExplorer_top.cuh"
+#include "include/theCudaExplorer_array.cuh"
+#include "include/theCudaExplorer_list.cuh"
 
 char randString[PADDING_LENGTH];
 
@@ -205,8 +207,9 @@ int main(int argc, char* argv[]) {
                 if (strcmp(optarg, "array") == 0) {
                     objectType = CE_ARRAY;
                 } else if (strcmp(optarg, "linkedlist") == 0) {
-                    // printf("Using LinkedList\n");
                     objectType = CE_LINKEDLIST;
+                } else if (strcmp(optarg, "loaded") == 0) {
+                    objectType = CE_LOADED;
                 } else {
                     printf("Invalid Array Type: %s\n", optarg);
                     abort();
@@ -277,9 +280,11 @@ int main(int argc, char* argv[]) {
     }
 
     cuda::atomic<int>* flag;
-    struct LargeLinkedObject * largeObjectList;
+    struct LoadedLargeObject * largeObjectList;
     int * largeObjectListConsumer;
+    int ** loadedListConsumer;
     int * localConsumer;
+    int ** localLoadedConsumer;
     int * largeObjectListOrder;
     int * localOrder;
     int * count;
@@ -288,24 +293,32 @@ int main(int argc, char* argv[]) {
 
     *count = numObjects;
 
-    printf("Size of Object: %.2f MB, %.2f KB\n", sizeof(struct LargeLinkedObject) / (1024.0 * 1024.0), sizeof(struct LargeLinkedObject) / 1024.0);
+    printf("Size of Object: %.2f MB, %.2f KB\n", sizeof(struct LoadedLargeObject) / (1024.0 * 1024.0), sizeof(struct LoadedLargeObject) / 1024.0);
     printf("Number of Objects: %d\n", *count);
     printf("CPU Events Timed: %d\t GPU Events Timed: %d\n", numCPUEvents, numGPUEvents);
 
     SAFE(cudaMallocHost(&flag, sizeof(cuda::atomic<int>)));
-    SAFE(cudaMallocHost(&largeObjectListConsumer, sizeof(int) * *count));
     SAFE(cudaMallocHost(&localConsumer, sizeof(int) * *count));
+    SAFE(cudaMallocHost(&localLoadedConsumer, sizeof(int) * *count * PADDING_SIZE));
     SAFE(cudaMallocHost(&largeObjectListOrder, sizeof(int) * *count));
     SAFE(cudaMallocHost(&localOrder, sizeof(int) * *count));
 
-    if (memoryType == CE_DRAM) {
-        SAFE(cudaMallocHost(&largeObjectList, sizeof(struct LargeLinkedObject) * *count));
-    } else if (memoryType == CE_UM) {
-        SAFE(cudaMallocManaged(&largeObjectList, sizeof(struct LargeLinkedObject) * *count));
-    } else if (memoryType == CE_GDDR) {
-        SAFE(cudaMalloc(&largeObjectList, sizeof(struct LargeLinkedObject) * *count));
+    if (memoryType == CE_GDDR) {
+        SAFE(cudaMalloc(&largeObjectListConsumer, sizeof(int) * *count));
+        SAFE(cudaMalloc(&loadedListConsumer, sizeof(int) * *count * PADDING_SIZE));
     } else {
-        largeObjectList = (struct LargeLinkedObject*) malloc(sizeof(struct LargeLinkedObject) * *count);
+        SAFE(cudaMallocHost(&largeObjectListConsumer, sizeof(int) * *count));
+        SAFE(cudaMallocHost(&loadedListConsumer, sizeof(int) * *count * PADDING_SIZE));
+    }
+
+    if (memoryType == CE_DRAM) {
+        SAFE(cudaMallocHost(&largeObjectList, sizeof(struct LoadedLargeObject) * *count));
+    } else if (memoryType == CE_UM) {
+        SAFE(cudaMallocManaged(&largeObjectList, sizeof(struct LoadedLargeObject) * *count));
+    } else if (memoryType == CE_GDDR) {
+        SAFE(cudaMalloc(&largeObjectList, sizeof(struct LoadedLargeObject) * *count));
+    } else {
+        largeObjectList = (struct LoadedLargeObject*) malloc(sizeof(struct LoadedLargeObject) * *count);
     }
 
     // allocate the ordering array in both DRAM and GDDR
@@ -322,35 +335,65 @@ int main(int argc, char* argv[]) {
 
 
     //randomly pad all the objects
-    if (memoryType == CE_GDDR) {
-        struct LargeLinkedObject * localCopy = (struct LargeLinkedObject *) malloc(sizeof(struct LargeLinkedObject) * *count);
+    if (objectType != CE_LOADED) {
+        if (memoryType == CE_GDDR) {
+            struct LoadedLargeObject * localCopy = (struct LoadedLargeObject *) malloc(sizeof(struct LoadedLargeObject) * *count);
 
-        for (int i = 0; i < (*count); i++) {
-            initRandString((sizeof(LargeLinkedObject) - sizeof(int)) / (2 * sizeof(char)));
+            for (int i = 0; i < (*count); i++) {
+                // initRandString((sizeof(LoadedLargeObject) - sizeof(int)) / (2 * sizeof(char)));
 
-            strcpy(localCopy[localOrder[i]].padding1, randString);
-            // initRandString((sizeof(LargeLinkedObject) - sizeof(int)) / (2 * sizeof(char)));
-            strcpy(localCopy[localOrder[i]].padding2, randString);
+                // strcpy(localCopy[localOrder[i]].padding1, randString);
+                // initRandString((sizeof(LoadedLargeObject) - sizeof(int)) / (2 * sizeof(char)));
+                // strcpy(localCopy[localOrder[i]].padding2, randString);
 
-            localCopy[localOrder[i]].data_na = localOrder[(i + 1) % *count];
-            localCopy[localOrder[i]].data.store(localOrder[(i + 1) % *count]);
+                localCopy[localOrder[i]].data_na = localOrder[(i + 1) % *count];
+                localCopy[localOrder[i]].data.store(localOrder[(i + 1) % *count]);
+            }
+
+            SAFE(cudaMemcpy(largeObjectList, localCopy, sizeof(struct LoadedLargeObject) * *count, cudaMemcpyHostToDevice));
+
+        } else {
+            for (int i = 0; i < (*count); i++) {
+                // initRandString((sizeof(LoadedLargeObject) - sizeof(int)) / (2 * sizeof(char)));
+
+                // strcpy(largeObjectList[localOrder[i]].padding1, randString);
+                // initRandString((sizeof(LoadedLargeObject) - sizeof(int)) / (2 * sizeof(char)));
+                // strcpy(largeObjectList[localOrder[i]].padding2, randString);
+
+                largeObjectList[localOrder[i]].data_na = localOrder[(i + 1) % *count];
+                largeObjectList[localOrder[i]].data.store(localOrder[(i + 1) % *count]);
+            }
         }
-
-        SAFE(cudaMemcpy(largeObjectList, localCopy, sizeof(struct LargeLinkedObject) * *count, cudaMemcpyHostToDevice));
-
     } else {
-        for (int i = 0; i < (*count); i++) {
-            initRandString((sizeof(LargeLinkedObject) - sizeof(int)) / (2 * sizeof(char)));
+        if (memoryType == CE_GDDR) {
+            struct LoadedLargeObject * localCopy = (struct LoadedLargeObject *) malloc(sizeof(struct LoadedLargeObject) * *count);
 
-            strcpy(largeObjectList[localOrder[i]].padding1, randString);
-            // initRandString((sizeof(LargeLinkedObject) - sizeof(int)) / (2 * sizeof(char)));
-            strcpy(largeObjectList[localOrder[i]].padding2, randString);
+            for (int i = 0; i < *count; i++) {
+                for (int z = 0; z < 2; z++) {
+                    for (int j = 0; j < PADDING_SIZE; j++) {
+                        localCopy[i].data_na_list[j] = i * z * j;
+                        localCopy[i].data_list[j].store(i * z * j);
+                    }
+                }
+                localCopy[i].data_na = localOrder[(i + 1) % *count];
+                localCopy[i].data.store(localOrder[(i + 1) % *count]);
+            }
 
-            largeObjectList[localOrder[i]].data_na = localOrder[(i + 1) % *count];
-            largeObjectList[localOrder[i]].data.store(localOrder[(i + 1) % *count]);
+            SAFE(cudaMemcpy(largeObjectList, localCopy, sizeof(struct LoadedLargeObject) * *count, cudaMemcpyHostToDevice));
+        } else {
+            for (int i = 0; i < *count; i++) {
+                for (int z = 0; z < 2; z++) {
+                    for (int j = 0; j < PADDING_SIZE; j++) {
+                        largeObjectList[i].data_na_list[j] = i * z * j;
+                        largeObjectList[i].data_list[j].store(i * z * j);
+                    }
+                }
+                largeObjectList[i].data_na = localOrder[(i + 1) % *count];
+                largeObjectList[i].data.store(localOrder[(i + 1) % *count]);
+            }
         }
     }
-
+    
     printSequence(operationSequence);
 
     int CPUEventCount = 0;
@@ -399,312 +442,51 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < operationSequence[0].total; i++) {
         if (operationSequence[i].device == CE_CPU) {
             begin[CPUEventCount] = std::chrono::high_resolution_clock::now();
-            switch (operationSequence[i].action) {
-                case CE_LOAD:
-                    switch (cpuMemoryOrder) {
-                        case CE_ACQ:
-                            CPUListConsumer_acq(flag, largeObjectList, localConsumer, localOrder, count);
-                            break;
-                        case CE_REL:
-                            CPUListConsumer_rel(flag, largeObjectList, localConsumer, localOrder, count);
-                            break;
-                        case CE_NONE:
-                            if (objectType == CE_ARRAY)
-                                CPUListConsumer(flag, largeObjectList, localConsumer, localOrder, count);
-                            else {
-                                if (outerLoopCount == CE_1K) 
-                                    CPULinkedListConsumer_1K(flag, largeObjectList, localConsumer, count);
-                                else 
-                                    CPULinkedListConsumer(flag, largeObjectList, localConsumer, count);
-                            }
-                            break;
-                    }
-                    break;
-                case CE_STORE:
-                    switch (cpuMemoryOrder) {
-                        case CE_NONE:
-                            if (objectType == CE_ARRAY)
-                                CPUListProducer(flag, largeObjectList, localOrder, count);
-                            else
-                                CPULinkedListProducer(flag, largeObjectList, localOrder, count);
-                            break;
-                        case CE_ACQ:
-                        case CE_REL:
-                            CPUListProducer_rel(flag, largeObjectList, localOrder, count);
-                            break;
-                    }
-                    break;
-            }
+
+            callFunction(
+                {
+                    operationSequence[i].device, 
+                    operationSequence[i].action, 
+                    cpuMemoryOrder, 
+                    outerLoopCount, 
+                    objectType
+                },
+                flag, 
+                largeObjectList,
+                largeObjectListConsumer, 
+                localConsumer,
+                loadedListConsumer, 
+                localLoadedConsumer,
+                largeObjectListOrder, 
+                localOrder,
+                count, 
+                beforeLoop[GPUEventCount], 
+                afterLoop[GPUEventCount]);
+            
             end[CPUEventCount++] = std::chrono::high_resolution_clock::now();
         } else {
             cudaEventRecord(start[GPUEventCount]);
-            switch (operationSequence[i].action) {
-                case CE_LOAD:
-                    switch (gpuMemoryOrder) {
-                        case CE_ACQ:
-                            switch (outerLoopCount) {
-                                case CE_1K:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq_1K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq_1K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_10K:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq_10K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq_10K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_100K:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq_100K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq_100K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_1M:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq_1M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq_1M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_10M:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq_10M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq_10M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_100M:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq_100M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq_100M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_1B:
-                                    GPUListConsumer_acq_1B<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_BASE:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                            }
-                            break;
-                        case CE_REL:
-                            switch (outerLoopCount) {
-                                case CE_1K:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_rel_1K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_rel_1K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_10K:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_rel_10K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_rel_10K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_100K:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_rel_100K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_rel_100K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_1M:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_rel_1M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_rel_1M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_10M:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_rel_10M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_rel_10M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_100M:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_rel_100M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_rel_100M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_1B:
-                                    GPUListConsumer_rel_1B<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_BASE:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_rel<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_rel<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                            }
-                            break;
-                        case CE_ACQ_ACQ:
-                            switch (outerLoopCount) {
-                                case CE_1K:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq_acq_1K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq_acq_1K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_10K:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq_acq_10K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq_acq_10K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_100K:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq_acq_100K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq_acq_100K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_1M:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq_acq_1M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq_acq_1M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_10M:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq_acq_10M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq_acq_10M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_100M:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq_acq_100M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq_acq_100M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_1B:
-                                    GPUListConsumer_acq_acq_1B<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_BASE:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq_acq<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq_acq<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                            }
-                            break;
-                        case CE_ACQ_REL:
-                            switch (outerLoopCount) {
-                                case CE_1K:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq_rel_1K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq_rel_1K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_10K:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq_rel_10K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq_rel_10K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_100K:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq_rel_100K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq_rel_100K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_1M:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq_rel_1M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq_rel_1M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_10M:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq_rel_10M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq_rel_10M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_100M:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq_rel_100M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq_rel_100M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_1B:
-                                    GPUListConsumer_acq_rel_1B<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_BASE:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_acq_rel<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_acq_rel<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                            }
-                            break;
-                        case CE_NONE:
-                            switch (outerLoopCount) {
-                                case CE_1K:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_1K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_1K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_10K:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_10K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_10K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_100K:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_100K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_100K<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_1M:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_1M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_1M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_10M:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_10M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_10M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_100M:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer_100M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer_100M<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_1B:
-                                    GPUListConsumer_1B<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                                case CE_BASE:
-                                    if (objectType == CE_ARRAY)
-                                        GPUListConsumer<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, largeObjectListOrder, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    else
-                                        GPULinkedListConsumer<<<1,1>>>(flag, largeObjectList, largeObjectList, largeObjectListConsumer, count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                                    break;
-                            }
-                            break;
-                    }
-                    // printf("GPU Consumer %d %d %p %u %p %u\n", objectType, GPUEventCount, localAfterLoop[GPUEventCount], *localAfterLoop[GPUEventCount], localBeforeLoop[GPUEventCount], *localBeforeLoop[GPUEventCount]);
-                    // SAFE(cudaMemcpy(localAfterLoop[GPUEventCount], afterLoop[GPUEventCount], sizeof(unsigned int), cudaMemcpyDeviceToHost));
-                    // SAFE(cudaMemcpy(localBeforeLoop[GPUEventCount], beforeLoop[GPUEventCount], sizeof(unsigned int), cudaMemcpyDeviceToHost));
-                    // printf("GPU Consumer %d %d %p %u %p %u\n", objectType, GPUEventCount, localAfterLoop[GPUEventCount], *localAfterLoop[GPUEventCount], localBeforeLoop[GPUEventCount], *localBeforeLoop[GPUEventCount]);
-                    break;
-                case CE_STORE:
-                    switch (gpuMemoryOrder) {
-                        case CE_NONE:
-                            EmptyKernel<<<1,1>>>(count, beforeLoop[GPUEventCount], afterLoop[GPUEventCount]);
-                            // GPUListProducer<<<1,1>>>(flag, largeObjectList, largeObjectListOrder, count);
-                            break;
-                        case CE_ACQ:
-                        case CE_REL:
-                            GPUListProducer_rel<<<1,1>>>(flag, largeObjectList, largeObjectListOrder, count);
-                            break;
-                    }
-                    break;
-            }
+            
+            callFunction(
+                {
+                    operationSequence[i].device, 
+                    operationSequence[i].action, 
+                    gpuMemoryOrder, 
+                    outerLoopCount, 
+                    objectType
+                },
+                flag, 
+                largeObjectList,
+                largeObjectListConsumer, 
+                localConsumer,
+                loadedListConsumer, 
+                localLoadedConsumer,
+                largeObjectListOrder, 
+                localOrder,
+                count, 
+                beforeLoop[GPUEventCount], 
+                afterLoop[GPUEventCount]);
+
             cudaEventRecord(stop[GPUEventCount]);
 
             // synchronize GPU executation after every operation

@@ -108,11 +108,15 @@ for file in os.listdir(output_directory):
                 outer_loop_size = file_split[4]
                 object_type = file_split[5]
                 if object_type == 'LL':
+                    object_type = 'LoadedList'
+                elif object_type == 'LLNW':
+                    object_type = 'LoadedListNoWarmup'
+                elif object_type == 'LN':
                     object_type = 'LinkedList'
+                elif object_type == 'LNNW':
+                    object_type = 'LinkedListNoWarmup'
                 elif object_type == 'A':
                     object_type = 'Array'
-                elif object_type == 'LLNW':
-                    object_type = 'LinkedListNoWarmup'
                 elif object_type == 'ANW':
                     object_type = 'ArrayNoWarmup'
             total_object_capacity = file_split[1].split('-')[1]
