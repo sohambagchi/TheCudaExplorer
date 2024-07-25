@@ -33,9 +33,6 @@ ptx: $(SOURCES) $(HEADERS)
 	done
 	python3 cleanup_executables.py clean
 
-ptx: $(SOURCES) $(HEADERS)
-	$(NVCC) $(NVCCFLAGS) -ptx -src-in-ptx $(SOURCES)
-
 clean:
 	rm -f $(OUTPUT) $(PTX) $(SASS)
 	rm -f *.out *.ptx *.sass
