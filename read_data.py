@@ -1,9 +1,42 @@
 import os
 import pandas as pd
 
+import argparse
+
 import sys
 
 from pprint import pprint
+
+size_dict = dict()
+
+size_dict['256MB'] = 134217724 
+size_dict['128MB'] = 67108860 
+size_dict['64MB'] = 33554428 
+size_dict['32MB'] = 16777212 
+size_dict['16MB'] = 8388604 
+size_dict['8MB'] = 4194300 
+size_dict['4MB'] = 2097148 
+size_dict['2MB'] = 1048572 
+size_dict['1MB'] = 524284 
+size_dict['512KB'] = 262140 
+size_dict['256KB'] = 131068 
+size_dict['128KB'] = 65532 
+size_dict['64KB'] = 32764 
+size_dict['32KB'] = 16380 
+size_dict['16KB'] = 8188 
+size_dict['8KB'] = 4092 
+size_dict['4KB'] = 2044 
+size_dict['2KB'] = 1020 
+size_dict['1KB'] = 508 
+size_dict['512B'] = 252 
+size_dict['384B'] = 188 
+size_dict['256B'] = 124 
+size_dict['192B'] = 92 
+size_dict['128B'] = 60 
+size_dict['64B'] = 28 
+size_dict['32B'] = 12 
+
+
 
 def size_to_bytes(size_str):
     size_str = size_str.upper()
@@ -68,7 +101,7 @@ def parse_op_seq(operation_sequence):
         
     return op_seq_dict
 
-def get_latencies(lines, results_line, operation_sequence):
+def get_latencies(lines, results_line, operation_sequence, loaded=False, size=0):
     
     latencies = dict()
     
@@ -76,14 +109,22 @@ def get_latencies(lines, results_line, operation_sequence):
         latencies[op] = dict()
         # print(op, results_line, offset)
         latencies[op]["latency"] = lines[results_line + offset].strip().split('\t')[0].replace('(', '').replace('ns)', '').strip()
+        if loaded:
+            latencies[op]["latency"] = round(int(latencies[op]["latency"]) / (size_dict[size] / 4), 0)
         latencies[op]["latency_total"] = lines[results_line + offset].strip().split('\t')[1].replace('[', '').replace('ns]', '').strip()
     
     return latencies
 
 
-operation_sequence = parse_op_seq(sys.argv[1])   
+parser = argparse.ArgumentParser(description='Collect data from output files')
 
-output_directory = sys.argv[2]
+parser.add_argument('--operation', '-o', dest='operation_sequence', type=str, help='The operation sequence to run', required=True)
+parser.add_argument('--output_dir', '-d', dest='output_dir', type=str, help='The output directory to store the results', required=True)
+
+args = parser.parse_args()
+
+operation_sequence = parse_op_seq(args.operation_sequence)
+output_directory = args.output_dir
 
 data = list()
 pccgg_data = list()
@@ -102,17 +143,31 @@ for file in os.listdir(output_directory):
             memory_scope = file_split[1].split('-')[0]
             memory_order = file_split[2]
             mem_type = file_split[3]
+            
+            if mem_type == 'GDDR':
+                mem_type = 'cudaMalloc()'
+            elif mem_type == 'DRAM':
+                mem_type = 'cudaMallocHost()'
+            elif mem_type == 'UM':
+                mem_type = 'cudaMallocManaged()'
+            else:
+                mem_type = 'malloc()'
+            
             if memory_order == 'EmptyKernel':
                 outer_loop_size = '1'
             else:
                 outer_loop_size = file_split[4]
                 object_type = file_split[5]
                 if object_type == 'LL':
+                    object_type = 'LoadedList'
+                elif object_type == 'LLNW':
+                    object_type = 'LoadedListNoWarmup'
+                elif object_type == 'LN':
                     object_type = 'LinkedList'
+                elif object_type == 'LNNW':
+                    object_type = 'LinkedListNoWarmup'
                 elif object_type == 'A':
                     object_type = 'Array'
-                elif object_type == 'LLNW':
-                    object_type = 'LinkedListNoWarmup'
                 elif object_type == 'ANW':
                     object_type = 'ArrayNoWarmup'
             total_object_capacity = file_split[1].split('-')[1]
@@ -142,7 +197,7 @@ for file in os.listdir(output_directory):
                 # if 'GPU' in line and ('ld' in line or 'st' in line):
                 #     line_index.append(i+1)
                 if 'Results' in line:
-                    latencies = get_latencies(lines, i, operation_sequence)
+                    latencies = get_latencies(lines, i, operation_sequence, loaded=True if 'Loaded' in object_type else False, size=total_object_capacity)
             
             data_obj = {
                 "scope": memory_scope,
