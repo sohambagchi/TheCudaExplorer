@@ -29,11 +29,11 @@ void shuffleList(int * localOrder, int count) {
 void printHelp() {
     printf("-n <int> : Number of Objects\n");
     printf("-o <string> : The order of operations\n");
-    printf("-m <string> : The type of memory to use (DRAM or UM)\n");
-    printf("-c <string> : Memory Order (acq, rel, acq_rel, acq_acq) for CPU Operations\n");
-    printf("-g <string> : Memory Order (acq, rel, acq_rel, acq_acq) for CPU Operations\n");
-    printf("-l <1, 1K, 10K, 100K, 1M, 10M, 100M> : The number of outer-loop iterations \n");
-    printf("-t <string> : The type of Array being used (array or linkedlist)\n");
+    printf("-m <string> : The type of memory to use (GDDR, UM, DRAM or SYS)\n");
+    printf("-c <string> : Memory Order (acq, rel, acq_rel, acq_acq, none) for CPU Operations\n");
+    printf("-g <string> : Memory Order (acq, rel, acq_rel, acq_acq, none) for GPU Operations\n");
+    printf("-l <1, 1K, 10K> : The number of outer-loop iterations \n");
+    printf("-t <string> : The type of Array being used (array, linkedlist, loaded)\n");
     printf("-w : Include if warmup required\n");
 
     printf("Example: ./theCudaExplorer -n 1024 -o \"PcCgg\" -m DRAM\n");
@@ -281,10 +281,11 @@ int main(int argc, char* argv[]) {
 
     cuda::atomic<int>* flag;
     struct LoadedLargeObject * largeObjectList;
+    struct LoadedLargeObject * localCopy;
     int * largeObjectListConsumer;
-    int ** loadedListConsumer;
+    int * loadedListConsumer;
     int * localConsumer;
-    int ** localLoadedConsumer;
+    int * localLoadedConsumer;
     int * largeObjectListOrder;
     int * localOrder;
     int * count;
@@ -297,11 +298,19 @@ int main(int argc, char* argv[]) {
     printf("Number of Objects: %d\n", *count);
     printf("CPU Events Timed: %d\t GPU Events Timed: %d\n", numCPUEvents, numGPUEvents);
 
-    SAFE(cudaMallocHost(&flag, sizeof(cuda::atomic<int>)));
-    SAFE(cudaMallocHost(&localConsumer, sizeof(int) * *count));
-    SAFE(cudaMallocHost(&localLoadedConsumer, sizeof(int) * *count * PADDING_LENGTH));
-    SAFE(cudaMallocHost(&largeObjectListOrder, sizeof(int) * *count));
-    SAFE(cudaMallocHost(&localOrder, sizeof(int) * *count));
+    if (memoryType == CE_SYS) {
+        flag = (cuda::atomic<int> *) malloc(sizeof(cuda::atomic<int>));
+        localConsumer = (int *) malloc(sizeof(int) * *count);
+        localLoadedConsumer = (int *) malloc(sizeof(int) * *count * PADDING_LENGTH / 4);
+        largeObjectListOrder = (int *) malloc(sizeof(int) * *count);
+        localOrder = (int *) malloc(sizeof(int) * *count);
+    } else {
+        SAFE(cudaMallocHost(&flag, sizeof(cuda::atomic<int>)));
+        SAFE(cudaMallocHost(&localConsumer, sizeof(int) * *count));
+        SAFE(cudaMallocHost(&localLoadedConsumer, sizeof(int) * *count * PADDING_LENGTH / 4));
+        SAFE(cudaMallocHost(&largeObjectListOrder, sizeof(int) * *count));
+        SAFE(cudaMallocHost(&localOrder, sizeof(int) * *count));
+    }
 
     if (memoryType == CE_GDDR) {
         SAFE(cudaMalloc(&largeObjectListConsumer, sizeof(int) * *count));
@@ -321,6 +330,8 @@ int main(int argc, char* argv[]) {
         largeObjectList = (struct LoadedLargeObject*) malloc(sizeof(struct LoadedLargeObject) * *count);
     }
 
+    localCopy = (struct LoadedLargeObject *) malloc(sizeof(struct LoadedLargeObject) * *count);
+
     // allocate the ordering array in both DRAM and GDDR
     for (int i = 0; i < (*count); i++) {
         localOrder[i] = i;
@@ -329,16 +340,14 @@ int main(int argc, char* argv[]) {
     shuffleList(localOrder, *count);
     SAFE(cudaMemcpy(largeObjectListOrder, localOrder, sizeof(int) * *count, cudaMemcpyHostToDevice));
 
-    printf("\nUsing %s for Objects\n", memoryType == CE_DRAM ? "cudaMallocHost" : memoryType == CE_UM ? "cudaMallocManaged" : memoryType == CE_GDDR ? "cudaMalloc" : "malloc");
-    printf("Per-Iteration Loads: %s\n\n", 
-    gpuMemoryOrder == CE_ACQ ? "acquire" : gpuMemoryOrder == CE_REL ? "release" : gpuMemoryOrder == CE_ACQ_ACQ ? "acq/acq" : gpuMemoryOrder == CE_ACQ_REL ? "acq/rel" : "non-atomic");
+    printf("\nUsing %s for %s Objects\n", memoryType == CE_DRAM ? "cudaMallocHost" : memoryType == CE_UM ? "cudaMallocManaged" : memoryType == CE_GDDR ? "cudaMalloc" : "malloc", objectType == CE_ARRAY ? "Array" : objectType == CE_LINKEDLIST ? "LinkedList" : "Loaded List");
+    printf("Per-Iteration Loads: %s (%s iter)\n\n", 
+    gpuMemoryOrder == CE_ACQ ? "acquire" : gpuMemoryOrder == CE_REL ? "release" : gpuMemoryOrder == CE_ACQ_ACQ ? "acq/acq" : gpuMemoryOrder == CE_ACQ_REL ? "acq/rel" : "non-atomic", outerLoopCount == CE_BASE ? "1" : outerLoopCount == CE_1K ? "1K" : outerLoopCount == CE_10K ? "10K" : outerLoopCount == CE_100K ? "100K" : outerLoopCount == CE_1M ? "1M" : outerLoopCount == CE_10M ? "10M" : outerLoopCount == CE_100M ? "100M" : outerLoopCount == CE_1B ? "1B" : "unknown");
 
 
     //randomly pad all the objects
     if (objectType != CE_LOADED) {
         if (memoryType == CE_GDDR) {
-            struct LoadedLargeObject * localCopy = (struct LoadedLargeObject *) malloc(sizeof(struct LoadedLargeObject) * *count);
-
             for (int i = 0; i < (*count); i++) {
                 // initRandString((sizeof(LoadedLargeObject) - sizeof(int)) / (2 * sizeof(char)));
 
@@ -449,10 +458,12 @@ int main(int argc, char* argv[]) {
                     operationSequence[i].action, 
                     cpuMemoryOrder, 
                     outerLoopCount, 
-                    objectType
+                    objectType,
+                    memoryType,
                 },
                 flag, 
                 largeObjectList,
+                localCopy,
                 largeObjectListConsumer, 
                 localConsumer,
                 loadedListConsumer, 
@@ -473,10 +484,12 @@ int main(int argc, char* argv[]) {
                     operationSequence[i].action, 
                     gpuMemoryOrder, 
                     outerLoopCount, 
-                    objectType
+                    objectType,
+                    memoryType,
                 },
                 flag, 
                 largeObjectList,
+                localCopy,
                 largeObjectListConsumer, 
                 localConsumer,
                 loadedListConsumer, 
@@ -504,6 +517,11 @@ int main(int argc, char* argv[]) {
         milliseconds[i] = 0;
         cudaEventElapsedTime(&milliseconds[i], start[i], stop[i]);
         milliseconds[i] *= 1e6;
+
+        if (objectType == CE_LOADED) {
+            milliseconds[i] /= PADDING_LENGTH / 4;
+        }
+
         loopDuration[i] = localAfterLoop[i] - localBeforeLoop[i];
     }
 

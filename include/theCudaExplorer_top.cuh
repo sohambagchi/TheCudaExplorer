@@ -107,98 +107,116 @@ __global__ void EmptyKernel(int *count, unsigned int *before, unsigned int *afte
 }
 
 template <typename T>
-void callFunction(const std::vector<int>& params, cuda::atomic<int>* flag, T* ptr, int *result, int *localResult, int **loadedResult, int **localLoadedResult, int *order, int *localOrder, int *count, unsigned int *before, unsigned int *after) {
+void CEMemcpyDToH(T *dst, T *src, size_t size) {
+    cudaMemcpy(dst, src, size, cudaMemcpyDeviceToHost);
+}
+
+template <typename T>
+void CEMemcpyHToD(T *dst, T *src, size_t size) {
+    cudaMemcpy(dst, src, size, cudaMemcpyHostToDevice);
+}
+
+template <typename T>
+void callFunction(const std::vector<int>& params, cuda::atomic<int>* flag, T* ptr, T* localPtr, int *result, int *localResult, int *loadedResult, int *localLoadedResult, int *order, int *localOrder, int *count, unsigned int *before, unsigned int *after) {
     CEDevice ceDevice = (CEDevice) params[0];
     CEAction ceAction = (CEAction) params[1];
     CEOrder ceOrder = (CEOrder) params[2];
     CECount ceCount = (CECount) params[3];
     CEObjectType ceObjectType = (CEObjectType) params[4];
+    CEMemory ceMemory = (CEMemory) params[5];
 
     switch (ceDevice) {
         case CE_CPU:
             switch (ceAction) {
                 case CE_LOAD:
-                    switch (ceOrder) {
-                        case CE_NONE:
-                            switch (ceCount) {
-                                default:
-                                    switch (ceObjectType) {
-                                        case CE_ARRAY:
-                                            CPUListConsumer(flag, ptr, localResult, localOrder, count);
-                                            break;
-                                        case CE_LINKEDLIST:
-                                            CPULinkedListConsumer(flag, ptr, localResult, count);
-                                            break;
-                                        case CE_LOADED:
-                                            CPULoadedListConsumer(flag, ptr, loadedResult, localOrder, count);
+                    switch (ceMemory) {
+                        case CE_GDDR:
+                            CEMemcpyDToH(localPtr, ptr, *count * sizeof(T));
+                            break;
+                        default:
+                            switch (ceOrder) {
+                                case CE_NONE:
+                                    switch (ceCount) {
+                                        default:
+                                            switch (ceObjectType) {
+                                                case CE_ARRAY:
+                                                    CPUListConsumer(flag, ptr, localResult, localOrder, count);
+                                                    break;
+                                                case CE_LINKEDLIST:
+                                                    CPULinkedListConsumer(flag, ptr, localResult, count);
+                                                    break;
+                                                case CE_LOADED:
+                                                    CPULoadedListConsumer(flag, ptr, loadedResult, localOrder, count);
+                                                    break;
+                                            }
                                             break;
                                     }
                                     break;
-                            }
-                            break;
-                        case CE_ACQ:
-                            switch (ceCount) {
-                                default:
-                                    switch (ceObjectType) {
-                                        case CE_ARRAY:
-                                            CPUListConsumer_acq(flag, ptr, localResult, localOrder, count);
-                                            break;
-                                        case CE_LINKEDLIST:
-                                            CPULinkedListConsumer_acq(flag, ptr, localResult, count);
-                                            break;
-                                        case CE_LOADED:
-                                            CPULoadedListConsumer_acq(flag, ptr, localLoadedResult, localOrder, count);
-                                            break;
-                                    }
-                                    break;
-                            }
-                            break;
-                        case CE_REL:
-                            switch (ceCount) {
-                                default:
-                                    switch (ceObjectType) {
-                                        case CE_ARRAY:
-                                            CPUListConsumer_rel(flag, ptr, localResult, localOrder, count);
-                                            break;
-                                        case CE_LINKEDLIST:
-                                            CPULinkedListConsumer_rel(flag, ptr, localResult, count);
-                                            break;
-                                        case CE_LOADED:
-                                            CPULoadedListConsumer_rel(flag, ptr, localLoadedResult, localOrder, count);
+                                case CE_ACQ:
+                                    switch (ceCount) {
+                                        default:
+                                            switch (ceObjectType) {
+                                                case CE_ARRAY:
+                                                    CPUListConsumer_acq(flag, ptr, localResult, localOrder, count);
+                                                    break;
+                                                case CE_LINKEDLIST:
+                                                    CPULinkedListConsumer_acq(flag, ptr, localResult, count);
+                                                    break;
+                                                case CE_LOADED:
+                                                    CPULoadedListConsumer_acq(flag, ptr, localLoadedResult, localOrder, count);
+                                                    break;
+                                            }
                                             break;
                                     }
                                     break;
-                            }
-                            break;
-                        case CE_ACQ_ACQ:
-                            switch (ceCount) {
-                                default:
-                                    switch (ceObjectType) {
-                                        case CE_ARRAY:
-                                            CPUListConsumer_acq_acq(flag, ptr, ptr, localResult, localOrder, count);
-                                            break;
-                                        case CE_LINKEDLIST:
-                                            CPULinkedListConsumer_acq_acq(flag, ptr, ptr, localResult, count);
-                                            break;
-                                        case CE_LOADED:
-                                            CPULoadedListConsumer_acq_acq(flag, ptr, ptr, localLoadedResult, localOrder, count);
+                                case CE_REL:
+                                    switch (ceCount) {
+                                        default:
+                                            switch (ceObjectType) {
+                                                case CE_ARRAY:
+                                                    CPUListConsumer_rel(flag, ptr, localResult, localOrder, count);
+                                                    break;
+                                                case CE_LINKEDLIST:
+                                                    CPULinkedListConsumer_rel(flag, ptr, localResult, count);
+                                                    break;
+                                                case CE_LOADED:
+                                                    CPULoadedListConsumer_rel(flag, ptr, localLoadedResult, localOrder, count);
+                                                    break;
+                                            }
                                             break;
                                     }
                                     break;
-                            }
-                            break;
-                        case CE_ACQ_REL:
-                            switch (ceCount) {
-                                default:
-                                    switch (ceObjectType) {
-                                        case CE_ARRAY:
-                                            CPUListConsumer_acq_rel(flag, ptr, ptr, localResult, localOrder, count);
+                                case CE_ACQ_ACQ:
+                                    switch (ceCount) {
+                                        default:
+                                            switch (ceObjectType) {
+                                                case CE_ARRAY:
+                                                    CPUListConsumer_acq_acq(flag, ptr, ptr, localResult, localOrder, count);
+                                                    break;
+                                                case CE_LINKEDLIST:
+                                                    CPULinkedListConsumer_acq_acq(flag, ptr, ptr, localResult, count);
+                                                    break;
+                                                case CE_LOADED:
+                                                    CPULoadedListConsumer_acq_acq(flag, ptr, ptr, localLoadedResult, localOrder, count);
+                                                    break;
+                                            }
                                             break;
-                                        case CE_LINKEDLIST:
-                                            CPULinkedListConsumer_acq_rel(flag, ptr, ptr, localResult, count);
-                                            break;
-                                        case CE_LOADED:
-                                            CPULoadedListConsumer_acq_rel(flag, ptr, ptr, localLoadedResult, localOrder, count);
+                                    }
+                                    break;
+                                case CE_ACQ_REL:
+                                    switch (ceCount) {
+                                        default:
+                                            switch (ceObjectType) {
+                                                case CE_ARRAY:
+                                                    CPUListConsumer_acq_rel(flag, ptr, ptr, localResult, localOrder, count);
+                                                    break;
+                                                case CE_LINKEDLIST:
+                                                    CPULinkedListConsumer_acq_rel(flag, ptr, ptr, localResult, count);
+                                                    break;
+                                                case CE_LOADED:
+                                                    CPULoadedListConsumer_acq_rel(flag, ptr, ptr, localLoadedResult, localOrder, count);
+                                                    break;
+                                            }
                                             break;
                                     }
                                     break;
@@ -207,36 +225,43 @@ void callFunction(const std::vector<int>& params, cuda::atomic<int>* flag, T* pt
                     }
                     break;
                 case CE_STORE:
-                    switch (ceOrder) {
-                        case CE_NONE:
-                            switch (ceCount) {
-                                default:
-                                    switch (ceObjectType) {
-                                        case CE_ARRAY:
-                                            CPUListProducer(flag, ptr, localOrder, count);
-                                            break;
-                                        case CE_LINKEDLIST:
-                                            CPULinkedListProducer(flag, ptr, localOrder, count);
-                                            break;
-                                        case CE_LOADED:
-                                            CPULoadedListProducer(flag, ptr, order, count);
+                    switch (ceMemory) {
+                        case CE_GDDR:
+                            CEMemcpyHToD(ptr, localPtr, *count * sizeof(T));
+                            break;
+                        default:
+                            switch (ceOrder) {
+                                case CE_NONE:
+                                    switch (ceCount) {
+                                        default:
+                                            switch (ceObjectType) {
+                                                case CE_ARRAY:
+                                                    CPUListProducer(flag, ptr, localOrder, count);
+                                                    break;
+                                                case CE_LINKEDLIST:
+                                                    CPULinkedListProducer(flag, ptr, localOrder, count);
+                                                    break;
+                                                case CE_LOADED:
+                                                    CPULoadedListProducer(flag, ptr, order, count);
+                                                    break;
+                                            }
                                             break;
                                     }
                                     break;
-                            }
-                            break;
-                        default:
-                            switch (ceCount) {
-                                case CE_BASE:
-                                    switch (ceObjectType) {
-                                        case CE_ARRAY:
-                                            CPUListProducer_rel(flag, ptr, localOrder, count);
-                                            break;
-                                        case CE_LINKEDLIST:
-                                            CPULinkedListProducer_rel(flag, ptr, localOrder, count);
-                                            break;
-                                        case CE_LOADED:
-                                            CPULoadedListProducer_rel(flag, ptr, localOrder, count);
+                                default:
+                                    switch (ceCount) {
+                                        case CE_BASE:
+                                            switch (ceObjectType) {
+                                                case CE_ARRAY:
+                                                    CPUListProducer_rel(flag, ptr, localOrder, count);
+                                                    break;
+                                                case CE_LINKEDLIST:
+                                                    CPULinkedListProducer_rel(flag, ptr, localOrder, count);
+                                                    break;
+                                                case CE_LOADED:
+                                                    CPULoadedListProducer_rel(flag, ptr, localOrder, count);
+                                                    break;
+                                            }
                                             break;
                                     }
                                     break;

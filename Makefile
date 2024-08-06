@@ -9,7 +9,7 @@ CUOBJDUMP = cuobjdump
 CUOBJDUMPFLAGS = -sass
 SASS = theCudaExplorer.sass
 
-SCOPES = cuda::thread_scope_thread  cuda::thread_scope_system # cuda::thread_scope_block cuda::thread_scope_device
+SCOPES = cuda::thread_scope_system # cuda::thread_scope_thread cuda::thread_scope_block cuda::thread_scope_device
 
 SIZES =      12  28  60   92   124  188  252 508 1020 2044 4092 8188 16380 32764 65532 131068 262140 524284 1048572 2097148 4194300 8388604 16777212 33554428 67108860 134217724
 # PAYLOAD = 32B 64B 128B 192B 256B 384B 512B 1KB  2KB  4KB 8KB  16KB  32KB  64KB 128KB  256KB 512KB   1MB     2MB     4MB     8MB     16MB    32MB     64MB    128MB     256MB
@@ -31,7 +31,7 @@ ptx: $(SOURCES) $(HEADERS)
 			$(CUOBJDUMP) $(CUOBJDUMPFLAGS) $(OUTPUT)_$$scope-$$size.out > $(SASS)_$$scope-$$size.sass; \
 		done; \
 	done
-	python3 cleanup_executables.py clean
+	python3 cleanup_executables.py
 
 clean:
 	rm -f $(OUTPUT) $(PTX) $(SASS)
