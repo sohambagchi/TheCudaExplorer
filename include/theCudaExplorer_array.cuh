@@ -701,6 +701,18 @@ __host__ void CPUListConsumer(cuda::atomic<int>* flag, T* ptr, int *result, int 
   }
 }
 
+template <typename T>
+__host__ void CPUListConsumer_1K(cuda::atomic<int>* flag, T* ptr, int *result, int *order, int *count) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  for (int j = 0; j < 1000; j++) {
+    for (int i = 0; i < *count; i++) {
+      result[i] = (ptr[order[i]]).data_na;
+    }
+  }
+}
+
 // Loads from the array of objects in the shuffled order into the result array (which is in DRAM)
 template <typename T>
 __host__ void CPUListConsumer_rel(cuda::atomic<int>* flag, T* ptr, int *result, int *order, int *count) {
@@ -710,6 +722,18 @@ __host__ void CPUListConsumer_rel(cuda::atomic<int>* flag, T* ptr, int *result, 
   for (int i = 0; i < *count; i++) {
     // result[i] = (ptr[order[i]]).data;
     result[i] = (ptr[order[i]]).data.load(cuda::memory_order_relaxed);
+  }
+}
+
+template <typename T>
+__host__ void CPUListConsumer_rel_1K(cuda::atomic<int>* flag, T* ptr, int *result, int *order, int *count) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  for (int j = 0; j < 1000; j++) {
+    for (int i = 0; i < *count; i++) {
+      result[i] = (ptr[order[i]]).data.load(cuda::memory_order_relaxed);
+    }
   }
 }
 
@@ -725,6 +749,18 @@ __host__ void CPUListConsumer_acq(cuda::atomic<int>* flag, T* ptr, int *result, 
 }
 
 template <typename T>
+__host__ void CPUListConsumer_acq_1K(cuda::atomic<int>* flag, T* ptr, int *result, int *order, int *count) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    for (int j = 0; j < 1000; j++) {
+        for (int i = 0; i < *count; i++) {
+            result[i] = (ptr[order[i]]).data.load(cuda::memory_order_acquire);
+        }
+    }
+}
+
+template <typename T>
 __host__ void CPUListConsumer_acq_rel(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count) {
   #ifdef RC
   while (flag->load(cuda::memory_order_acquire) == 0) {}
@@ -734,6 +770,32 @@ __host__ void CPUListConsumer_acq_rel(cuda::atomic<int>* flag, T* ptr1, T* ptr2,
     result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
     result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
   }
+}
+
+template <typename T>
+__host__ void CPUListConsumer_acq_rel_1K(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    for (int j = 0; j < 1000; j++) {
+        for (int i = 0; i < *count; i++) {
+            result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+            result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_relaxed);
+        }
+    }
+}
+
+template <typename T>
+__host__ void CPUListConsumer_acq_acq_1K(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *result, int *order, int *count) {
+    #ifdef RC
+    while (flag->load(cuda::memory_order_acquire) == 0) {}
+    #endif
+    for (int j = 0; j < 1000; j++) {
+        for (int i = 0; i < *count; i++) {
+            result[i] = (ptr1[order[i]]).data.load(cuda::memory_order_acquire);
+            result[i] = (ptr2[order[i]]).data.load(cuda::memory_order_acquire);
+        }
+    }
 }
 
 template <typename T>
@@ -765,6 +827,23 @@ __host__ void CPUListProducer(cuda::atomic<int>* flag, T* ptr, int *order, int *
     #endif
 }
 
+template <typename T>
+__host__ void CPUListProducer_1K(cuda::atomic<int>* flag, T* ptr, int *order, int *count) {
+    #ifdef RC
+    flag->store(0, cuda::memory_order_release);
+    #endif
+
+    for (int j = 0; j < 1000; j++) {
+        for (int i = 0; i < *count; i++) {
+            (ptr[order[i]]).data_na = i;
+        }
+    }
+
+    #ifdef RC
+    flag->store(1, cuda::memory_order_release);
+    #endif
+}
+
 // Stores to the array of objects in the shuffled order
 template <typename T>
 __host__ void CPUListProducer_rel(cuda::atomic<int>* flag, T* ptr, int *order, int *count) {
@@ -783,5 +862,21 @@ __host__ void CPUListProducer_rel(cuda::atomic<int>* flag, T* ptr, int *order, i
     #endif
 }
 
+template <typename T>
+__host__ void CPUListProducer_rel_1K(cuda::atomic<int>* flag, T* ptr, int *order, int *count) {
+    #ifdef RC
+    flag->store(0, cuda::memory_order_release);
+    #endif
+
+    for (int j = 0; j < 1000; j++) {
+        for (int i = 0; i < *count; i++) {
+            (ptr[order[i]]).data.store(i, cuda::memory_order_relaxed);
+        }
+    }
+
+    #ifdef RC
+    flag->store(1, cuda::memory_order_release);
+    #endif
+}
 
 #endif /* THECUDAEXPLORER_ARRAY_H_ */

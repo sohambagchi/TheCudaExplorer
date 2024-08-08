@@ -912,6 +912,21 @@ __host__ void CPULinkedListConsumer_rel(cuda::atomic<int>* flag, T* head, int *r
 }
 
 template <typename T>
+__host__ void CPULinkedListConsumer_rel_1K(cuda::atomic<int>* flag, T* head, int *result, int *count) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  T* current = head; int next = 0;
+  for (int j = 0; j < 1000; j++) {
+    for (int i = 0; i < *count; i++) {
+      next = current[next].data.load(cuda::memory_order_relaxed);
+      result[i] = next;
+      // next = current[next].next;
+    }
+  }
+}
+
+template <typename T>
 __host__ void CPULinkedListConsumer_acq_rel(cuda::atomic<int>* flag, T* head1, T* head2, int *result, int *count) {
   #ifdef RC
   while (flag->load(cuda::memory_order_acquire) == 0) {}
@@ -924,6 +939,24 @@ __host__ void CPULinkedListConsumer_acq_rel(cuda::atomic<int>* flag, T* head1, T
     next2 = current2[next2].data.load(cuda::memory_order_relaxed);
     result[i] = next2;
     // next = current[next].next;
+  }
+}
+
+template <typename T>
+__host__ void CPULinkedListConsumer_acq_rel_1K(cuda::atomic<int>* flag, T* head1, T* head2, int *result, int *count) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  T* current1 = head1; int next1 = 0;
+  T* current2 = head2; int next2 = 0;
+  for (int j = 0; j < 1000; j++) {
+    for (int i = 0; i < *count; i++) {
+      next1 = current1[next1].data.load(cuda::memory_order_acquire);
+      result[i] = next1;
+      next2 = current2[next2].data.load(cuda::memory_order_relaxed);
+      result[i] = next2;
+      // next = current[next].next;
+    }
   }
 }
 
@@ -944,11 +977,43 @@ __host__ void CPULinkedListConsumer_acq_acq(cuda::atomic<int>* flag, T* head1, T
 }
 
 template <typename T>
+__host__ void CPULinkedListConsumer_acq_acq_1K(cuda::atomic<int>* flag, T* head1, T* head2, int *result, int *count) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  T* current1 = head1; int next1 = 0;
+  T* current2 = head2; int next2 = 0;
+  for (int j = 0; j < 1000; j++) {
+    for (int i = 0; i < *count; i++) {
+      next1 = current1[next1].data.load(cuda::memory_order_acquire);
+      result[i] = next1;
+      next2 = current2[next2].data.load(cuda::memory_order_acquire);
+      result[i] = next2;
+      // next = current[next].next;
+    }
+  }
+}
+
+template <typename T>
 __global__ void GPULinkedListProducer(cuda::atomic<int>* flag, T* head, int *order, int *count) {
   T* current = head;
   for (int i = 0; i < *count; i++) {
     current[order[i]].data_na = order[(i + 1) % *count];
     // next = current[next].next;
+  }
+  #ifdef RC
+  flag->store(1, cuda::memory_order_release);
+  #endif
+}
+
+template <typename T>
+__global__ void GPULinkedListProducer_1K(cuda::atomic<int>* flag, T* head, int *order, int *count) {
+  T* current = head;
+  for (int j = 0; j < 1000; j++) {
+    for (int i = 0; i < *count; i++) {
+      current[order[i]].data_na = order[(i + 1) % *count];
+      // next = current[next].next;
+    }
   }
   #ifdef RC
   flag->store(1, cuda::memory_order_release);
@@ -961,6 +1026,20 @@ __global__ void GPULinkedListProducer_rel(cuda::atomic<int>* flag, T* head, int 
   for (int i = 0; i < *count; i++) {
     current[order[i]].data.store(order[(i + 1) % *count], cuda::memory_order_relaxed);
     // next = current[next].next;
+  }
+  #ifdef RC
+  flag->store(1, cuda::memory_order_release);
+  #endif
+}
+
+template <typename T>
+__global__ void GPULinkedListProducer_rel_1K(cuda::atomic<int>* flag, T* head, int *order, int *count) {
+  T* current = head;
+  for (int j = 0; j < 1000; j++) {
+    for (int i = 0; i < *count; i++) {
+      current[order[i]].data.store(order[(i + 1) % *count], cuda::memory_order_relaxed);
+      // next = current[next].next;
+    }
   }
   #ifdef RC
   flag->store(1, cuda::memory_order_release);
@@ -982,11 +1061,41 @@ __host__ void CPULinkedListProducer(cuda::atomic<int>* flag, T* head, int *order
 }
 
 template <typename T>
+__host__ void CPULinkedListProducer_1K(cuda::atomic<int>* flag, T* head, int *order, int *count) {
+  T* current = head;
+  for (int j = 0; j < 1000; j++) {
+    for (int i = 0; i < *count; i++) {
+      current[order[i]].data_na = order[(i + 1) % *count];
+      // next = current[next].data_na;
+      // current[next].data_na = next;
+      // next = current[next].next;
+    }
+  }
+  #ifdef RC
+  flag->store(1, cuda::memory_order_release);
+  #endif
+}
+
+template <typename T>
 __host__ void CPULinkedListProducer_rel(cuda::atomic<int>* flag, T* head, int *order, int *count) {
   T* current = head;
   for (int i = 0; i < *count; i++) {
     current[order[i]].data.store(order[(i + 1) % *count], cuda::memory_order_relaxed);
     // next = current[next].next;
+  }
+  #ifdef RC
+  flag->store(1, cuda::memory_order_release);
+  #endif
+}
+
+template <typename T>
+__host__ void CPULinkedListProducer_rel_1K(cuda::atomic<int>* flag, T* head, int *order, int *count) {
+  T* current = head;
+  for (int j = 0; j < 1000; j++) {
+    for (int i = 0; i < *count; i++) {
+      current[order[i]].data.store(order[(i + 1) % *count], cuda::memory_order_relaxed);
+      // next = current[next].next;
+    }
   }
   #ifdef RC
   flag->store(1, cuda::memory_order_release);

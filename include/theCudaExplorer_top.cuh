@@ -86,6 +86,8 @@ struct LargeLinkedObject {
     cuda::atomic<int, SCOPE> data;
     // struct LargeLinkedObject *next;
     // int next;
+    int data_na_list[0];
+    cuda::atomic<int, SCOPE> data_list[0];
 };
 
 struct LoadedLargeObject {
@@ -137,7 +139,7 @@ void callFunction(const std::vector<int>& params, cuda::atomic<int>* flag, T* pt
                             switch (ceOrder) {
                                 case CE_NONE:
                                     switch (ceCount) {
-                                        default:
+                                        case CE_BASE:
                                             switch (ceObjectType) {
                                                 case CE_ARRAY:
                                                     CPUListConsumer(flag, ptr, localResult, localOrder, count);
@@ -150,11 +152,24 @@ void callFunction(const std::vector<int>& params, cuda::atomic<int>* flag, T* pt
                                                     break;
                                             }
                                             break;
+                                        case CE_1K:
+                                            switch (ceObjectType) {
+                                                case CE_ARRAY:
+                                                    CPUListConsumer_1K(flag, ptr, localResult, localOrder, count);
+                                                    break;
+                                                case CE_LINKEDLIST:
+                                                    CPULinkedListConsumer_1K(flag, ptr, localResult, count);
+                                                    break;
+                                                case CE_LOADED:
+                                                    CPULoadedListConsumer_1K(flag, ptr, loadedResult, localOrder, count);
+                                                    break;
+                                            }
+                                            break;
                                     }
                                     break;
                                 case CE_ACQ:
                                     switch (ceCount) {
-                                        default:
+                                        case CE_BASE:
                                             switch (ceObjectType) {
                                                 case CE_ARRAY:
                                                     CPUListConsumer_acq(flag, ptr, localResult, localOrder, count);
@@ -167,11 +182,24 @@ void callFunction(const std::vector<int>& params, cuda::atomic<int>* flag, T* pt
                                                     break;
                                             }
                                             break;
+                                        case CE_1K:
+                                            switch (ceObjectType) {
+                                                case CE_ARRAY:
+                                                    CPUListConsumer_acq_1K(flag, ptr, localResult, localOrder, count);
+                                                    break;
+                                                case CE_LINKEDLIST:
+                                                    CPULinkedListConsumer_acq_1K(flag, ptr, localResult, count);
+                                                    break;
+                                                case CE_LOADED:
+                                                    CPULoadedListConsumer_acq_1K(flag, ptr, localLoadedResult, localOrder, count);
+                                                    break;
+                                            }
+                                            break;
                                     }
                                     break;
                                 case CE_REL:
                                     switch (ceCount) {
-                                        default:
+                                        case CE_BASE:
                                             switch (ceObjectType) {
                                                 case CE_ARRAY:
                                                     CPUListConsumer_rel(flag, ptr, localResult, localOrder, count);
@@ -181,6 +209,19 @@ void callFunction(const std::vector<int>& params, cuda::atomic<int>* flag, T* pt
                                                     break;
                                                 case CE_LOADED:
                                                     CPULoadedListConsumer_rel(flag, ptr, localLoadedResult, localOrder, count);
+                                                    break;
+                                            }
+                                            break;
+                                        case CE_1K:
+                                            switch (ceObjectType) {
+                                                case CE_ARRAY:
+                                                    CPUListConsumer_rel_1K(flag, ptr, localResult, localOrder, count);
+                                                    break;
+                                                case CE_LINKEDLIST:
+                                                    CPULinkedListConsumer_rel_1K(flag, ptr, localResult, count);
+                                                    break;
+                                                case CE_LOADED:
+                                                    CPULoadedListConsumer_rel_1K(flag, ptr, localLoadedResult, localOrder, count);
                                                     break;
                                             }
                                             break;
@@ -201,6 +242,19 @@ void callFunction(const std::vector<int>& params, cuda::atomic<int>* flag, T* pt
                                                     break;
                                             }
                                             break;
+                                        // case CE_1K:
+                                        //     switch (ceObjectType) {
+                                        //         case CE_ARRAY:
+                                        //             CPUListConsumer_acq_acq_1K(flag, ptr, ptr, localResult, localOrder, count);
+                                        //             break;
+                                        //         case CE_LINKEDLIST:
+                                        //             CPULinkedListConsumer_acq_acq_1K(flag, ptr, ptr, localResult, count);
+                                        //             break;
+                                        //         case CE_LOADED:
+                                        //             CPULoadedListConsumer_acq_acq_1K(flag, ptr, ptr, localLoadedResult, localOrder, count);
+                                        //             break;
+                                        //     }
+                                        //     break;
                                     }
                                     break;
                                 case CE_ACQ_REL:
@@ -218,6 +272,19 @@ void callFunction(const std::vector<int>& params, cuda::atomic<int>* flag, T* pt
                                                     break;
                                             }
                                             break;
+                                        // case CE_1K:
+                                        //     switch (ceObjectType) {
+                                        //         case CE_ARRAY:
+                                        //             CPUListConsumer_acq_rel_1K(flag, ptr, ptr, localResult, localOrder, count);
+                                        //             break;
+                                        //         case CE_LINKEDLIST:
+                                        //             CPULinkedListConsumer_acq_rel_1K(flag, ptr, ptr, localResult, count);
+                                        //             break;
+                                        //         case CE_LOADED:
+                                        //             CPULoadedListConsumer_acq_rel_1K(flag, ptr, ptr, localLoadedResult, localOrder, count);
+                                        //             break;
+                                        //     }
+                                        //     break;
                                     }
                                     break;
                             }
@@ -226,9 +293,9 @@ void callFunction(const std::vector<int>& params, cuda::atomic<int>* flag, T* pt
                     break;
                 case CE_STORE:
                     switch (ceMemory) {
-                        case CE_GDDR:
-                            CEMemcpyHToD(ptr, localPtr, *count * sizeof(T));
-                            break;
+                        // case CE_GDDR:
+                        //     CEMemcpyHToD(ptr, localPtr, *count * sizeof(T));
+                        //     break;
                         default:
                             switch (ceOrder) {
                                 case CE_NONE:
@@ -246,11 +313,24 @@ void callFunction(const std::vector<int>& params, cuda::atomic<int>* flag, T* pt
                                                     break;
                                             }
                                             break;
+                                        // case CE_1K:
+                                        //     switch (ceObjectType) {
+                                        //         case CE_ARRAY:
+                                        //             CPUListProducer_1K(flag, ptr, localOrder, count);
+                                        //             break;
+                                        //         case CE_LINKEDLIST:
+                                        //             CPULinkedListProducer_1K(flag, ptr, localOrder, count);
+                                        //             break;
+                                        //         case CE_LOADED:
+                                        //             CPULoadedListProducer_1K(flag, ptr, order, count);
+                                        //             break;
+                                        //     }
+                                        //     break;
                                     }
                                     break;
                                 default:
                                     switch (ceCount) {
-                                        case CE_BASE:
+                                        default:
                                             switch (ceObjectType) {
                                                 case CE_ARRAY:
                                                     CPUListProducer_rel(flag, ptr, localOrder, count);
@@ -263,6 +343,19 @@ void callFunction(const std::vector<int>& params, cuda::atomic<int>* flag, T* pt
                                                     break;
                                             }
                                             break;
+                                        // case CE_1K:
+                                        //     switch (ceObjectType) {
+                                        //         case CE_ARRAY:
+                                        //             CPUListProducer_rel_1K(flag, ptr, localOrder, count);
+                                        //             break;
+                                        //         case CE_LINKEDLIST:
+                                        //             CPULinkedListProducer_rel_1K(flag, ptr, localOrder, count);
+                                        //             break;
+                                        //         case CE_LOADED:
+                                        //             CPULoadedListProducer_rel_1K(flag, ptr, localOrder, count);
+                                        //             break;
+                                        //     }
+                                        //     break;
                                     }
                                     break;
                             }

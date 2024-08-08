@@ -280,8 +280,8 @@ int main(int argc, char* argv[]) {
     }
 
     cuda::atomic<int>* flag;
-    struct LoadedLargeObject * largeObjectList;
-    struct LoadedLargeObject * localCopy;
+    struct LargeLinkedObject * largeObjectList;
+    struct LargeLinkedObject * localCopy;
     int * largeObjectListConsumer;
     int * loadedListConsumer;
     int * localConsumer;
@@ -294,43 +294,43 @@ int main(int argc, char* argv[]) {
 
     *count = numObjects;
 
-    printf("Size of Object: %.2f MB, %.2f KB\n", sizeof(struct LoadedLargeObject) / (1024.0 * 1024.0), sizeof(struct LoadedLargeObject) / 1024.0);
+    printf("Size of Object: %.2f MB, %.2f KB\n", sizeof(struct LargeLinkedObject) / (1024.0 * 1024.0), sizeof(struct LargeLinkedObject) / 1024.0);
     printf("Number of Objects: %d\n", *count);
     printf("CPU Events Timed: %d\t GPU Events Timed: %d\n", numCPUEvents, numGPUEvents);
 
     if (memoryType == CE_SYS) {
         flag = (cuda::atomic<int> *) malloc(sizeof(cuda::atomic<int>));
         localConsumer = (int *) malloc(sizeof(int) * *count);
-        localLoadedConsumer = (int *) malloc(sizeof(int) * *count * PADDING_LENGTH / 4);
+        localLoadedConsumer = (int *) malloc(sizeof(int) * *count);
         largeObjectListOrder = (int *) malloc(sizeof(int) * *count);
         localOrder = (int *) malloc(sizeof(int) * *count);
     } else {
         SAFE(cudaMallocHost(&flag, sizeof(cuda::atomic<int>)));
         SAFE(cudaMallocHost(&localConsumer, sizeof(int) * *count));
-        SAFE(cudaMallocHost(&localLoadedConsumer, sizeof(int) * *count * PADDING_LENGTH / 4));
+        SAFE(cudaMallocHost(&localLoadedConsumer, sizeof(int) * *count));
         SAFE(cudaMallocHost(&largeObjectListOrder, sizeof(int) * *count));
         SAFE(cudaMallocHost(&localOrder, sizeof(int) * *count));
     }
 
     if (memoryType == CE_GDDR) {
         SAFE(cudaMalloc(&largeObjectListConsumer, sizeof(int) * *count));
-        SAFE(cudaMalloc(&loadedListConsumer, sizeof(int) * *count * PADDING_LENGTH / 4));
+        SAFE(cudaMalloc(&loadedListConsumer, sizeof(int) * *count));
     } else {
         SAFE(cudaMallocHost(&largeObjectListConsumer, sizeof(int) * *count));
-        SAFE(cudaMallocHost(&loadedListConsumer, sizeof(int) * *count * PADDING_LENGTH / 4));
+        SAFE(cudaMallocHost(&loadedListConsumer, sizeof(int) * *count));
     }
 
     if (memoryType == CE_DRAM) {
-        SAFE(cudaMallocHost(&largeObjectList, sizeof(struct LoadedLargeObject) * *count));
+        SAFE(cudaMallocHost(&largeObjectList, sizeof(struct LargeLinkedObject) * *count));
     } else if (memoryType == CE_UM) {
-        SAFE(cudaMallocManaged(&largeObjectList, sizeof(struct LoadedLargeObject) * *count));
+        SAFE(cudaMallocManaged(&largeObjectList, sizeof(struct LargeLinkedObject) * *count));
     } else if (memoryType == CE_GDDR) {
-        SAFE(cudaMalloc(&largeObjectList, sizeof(struct LoadedLargeObject) * *count));
+        SAFE(cudaMalloc(&largeObjectList, sizeof(struct LargeLinkedObject) * *count));
     } else {
-        largeObjectList = (struct LoadedLargeObject*) malloc(sizeof(struct LoadedLargeObject) * *count);
+        largeObjectList = (struct LargeLinkedObject*) malloc(sizeof(struct LargeLinkedObject) * *count);
     }
 
-    localCopy = (struct LoadedLargeObject *) malloc(sizeof(struct LoadedLargeObject) * *count);
+    localCopy = (struct LargeLinkedObject *) malloc(sizeof(struct LargeLinkedObject) * *count);
 
     // allocate the ordering array in both DRAM and GDDR
     for (int i = 0; i < (*count); i++) {
@@ -349,25 +349,25 @@ int main(int argc, char* argv[]) {
     if (objectType != CE_LOADED) {
         if (memoryType == CE_GDDR) {
             for (int i = 0; i < (*count); i++) {
-                // initRandString((sizeof(LoadedLargeObject) - sizeof(int)) / (2 * sizeof(char)));
+                initRandString((sizeof(LargeLinkedObject) - sizeof(int)) / (2 * sizeof(char)));
 
-                // strcpy(localCopy[localOrder[i]].padding1, randString);
-                // initRandString((sizeof(LoadedLargeObject) - sizeof(int)) / (2 * sizeof(char)));
-                // strcpy(localCopy[localOrder[i]].padding2, randString);
+                strcpy(localCopy[localOrder[i]].padding1, randString);
+                initRandString((sizeof(LargeLinkedObject) - sizeof(int)) / (2 * sizeof(char)));
+                strcpy(localCopy[localOrder[i]].padding2, randString);
 
                 localCopy[localOrder[i]].data_na = localOrder[(i + 1) % *count];
                 localCopy[localOrder[i]].data.store(localOrder[(i + 1) % *count]);
             }
 
-            SAFE(cudaMemcpy(largeObjectList, localCopy, sizeof(struct LoadedLargeObject) * *count, cudaMemcpyHostToDevice));
+            SAFE(cudaMemcpy(largeObjectList, localCopy, sizeof(struct LargeLinkedObject) * *count, cudaMemcpyHostToDevice));
 
         } else {
             for (int i = 0; i < (*count); i++) {
-                // initRandString((sizeof(LoadedLargeObject) - sizeof(int)) / (2 * sizeof(char)));
+                initRandString((sizeof(LargeLinkedObject) - sizeof(int)) / (2 * sizeof(char)));
 
-                // strcpy(largeObjectList[localOrder[i]].padding1, randString);
-                // initRandString((sizeof(LoadedLargeObject) - sizeof(int)) / (2 * sizeof(char)));
-                // strcpy(largeObjectList[localOrder[i]].padding2, randString);
+                strcpy(largeObjectList[localOrder[i]].padding1, randString);
+                initRandString((sizeof(LargeLinkedObject) - sizeof(int)) / (2 * sizeof(char)));
+                strcpy(largeObjectList[localOrder[i]].padding2, randString);
 
                 largeObjectList[localOrder[i]].data_na = localOrder[(i + 1) % *count];
                 largeObjectList[localOrder[i]].data.store(localOrder[(i + 1) % *count]);
@@ -375,28 +375,28 @@ int main(int argc, char* argv[]) {
         }
     } else {
         if (memoryType == CE_GDDR) {
-            struct LoadedLargeObject * localCopy = (struct LoadedLargeObject *) malloc(sizeof(struct LoadedLargeObject) * *count);
+            struct LargeLinkedObject * localCopy = (struct LargeLinkedObject *) malloc(sizeof(struct LargeLinkedObject) * *count);
 
             for (int i = 0; i < *count; i++) {
-                for (int z = 0; z < 2; z++) {
-                    for (int j = 0; j < PADDING_LENGTH / 4; j++) {
-                        localCopy[i].data_na_list[j] = i * z * j;
-                        localCopy[i].data_list[j].store(i * z * j);
-                    }
-                }
+                // for (int z = 0; z < 2; z++) {
+                //     for (int j = 0; j < PADDING_LENGTH / 4; j++) {
+                //         // localCopy[i].data_na_list[j] = i * z * j;
+                //         // localCopy[i].data_list[j].store(i * z * j);
+                //     }
+                // }
                 localCopy[i].data_na = localOrder[(i + 1) % *count];
                 localCopy[i].data.store(localOrder[(i + 1) % *count]);
             }
 
-            SAFE(cudaMemcpy(largeObjectList, localCopy, sizeof(struct LoadedLargeObject) * *count, cudaMemcpyHostToDevice));
+            SAFE(cudaMemcpy(largeObjectList, localCopy, sizeof(struct LargeLinkedObject) * *count, cudaMemcpyHostToDevice));
         } else {
             for (int i = 0; i < *count; i++) {
-                for (int z = 0; z < 2; z++) {
-                    for (int j = 0; j < PADDING_LENGTH / 4; j++) {
-                        largeObjectList[i].data_na_list[j] = i * z * j;
-                        largeObjectList[i].data_list[j].store(i * z * j);
-                    }
-                }
+                // for (int z = 0; z < 2; z++) {
+                //     for (int j = 0; j < PADDING_LENGTH / 4; j++) {
+                //         largeObjectList[i].data_na_list[j] = i * z * j;
+                //         largeObjectList[i].data_list[j].store(i * z * j);
+                //     }
+                // }
                 largeObjectList[i].data_na = localOrder[(i + 1) % *count];
                 largeObjectList[i].data.store(localOrder[(i + 1) % *count]);
             }
