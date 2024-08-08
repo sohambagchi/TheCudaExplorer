@@ -114,8 +114,20 @@ void CEMemcpyDToH(T *dst, T *src, size_t size) {
 }
 
 template <typename T>
+void CEMemcpyDToH_1K(T *dst, T *src, size_t size) {
+    for (int z = 0; z < 1000; z++) 
+        cudaMemcpy(dst, src, size, cudaMemcpyDeviceToHost);
+}
+
+template <typename T>
 void CEMemcpyHToD(T *dst, T *src, size_t size) {
     cudaMemcpy(dst, src, size, cudaMemcpyHostToDevice);
+}
+
+template <typename T>
+void CEMemcpyHToD_1K(T *dst, T *src, size_t size) {
+    for (int z = 0; z < 1000; z++) 
+        cudaMemcpy(dst, src, size, cudaMemcpyHostToDevice);
 }
 
 template <typename T>
@@ -133,7 +145,14 @@ void callFunction(const std::vector<int>& params, cuda::atomic<int>* flag, T* pt
                 case CE_LOAD:
                     switch (ceMemory) {
                         case CE_GDDR:
-                            CEMemcpyDToH(localPtr, ptr, *count * sizeof(T));
+                            switch (ceCount) {
+                                case CE_BASE:
+                                    CEMemcpyDToH(localPtr, ptr, *count * sizeof(T));
+                                    break;
+                                case CE_1K:
+                                    CEMemcpyDToH_1K(localPtr, ptr, *count * sizeof(T));
+                                    break;
+                            }
                             break;
                         default:
                             switch (ceOrder) {
@@ -293,9 +312,16 @@ void callFunction(const std::vector<int>& params, cuda::atomic<int>* flag, T* pt
                     break;
                 case CE_STORE:
                     switch (ceMemory) {
-                        // case CE_GDDR:
-                        //     CEMemcpyHToD(ptr, localPtr, *count * sizeof(T));
-                        //     break;
+                        case CE_GDDR:
+                            switch (ceCount) {
+                                case CE_BASE:
+                                    CEMemcpyHToD(ptr, localPtr, *count * sizeof(T));
+                                    break;
+                                case CE_1K:
+                                    CEMemcpyHToD_1K(ptr, localPtr, *count * sizeof(T));
+                                    break;
+                            }
+                            break;
                         default:
                             switch (ceOrder) {
                                 case CE_NONE:
