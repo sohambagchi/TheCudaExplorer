@@ -14,21 +14,33 @@ make
 
 This command will use the provided Makefile to compile the source files and generate the executable.
 
-2. **Run the Program**: Run the included Python file `cleanup_executables.py` to rename the clunky executables, and also run them all. 
+2. **Cleanup the Executable Filenames**: Run the included Python file `cleanup_executables.py` to rename the clunky executables. 
 
 ```bash
 python3 cleanup_executables.py
 ```
 
-This command runs the exploration with 512 objects, using only GPU Memory
-
-3. **Interpret Results**: After execution, the program provides results including the sequence of memory operations and their corresponding timings for CPU and GPU events.
+3. **Run the Experiments**: Run the included Python file `run_experiments.py` to run a specified experiment for all executables.
 
 ```bash
-python3 read_data.py
+python3 run_experiments.py -o <COMMA_SEPARATED_LIST_OF_OPERATION_SEQUENCES> -d <OUTPUT_DIRECTORY> -m <COMMA_SEPARATED_LIST_OF_MEMORY_ALLOCATORS>
 ```
 
-This command reads all the data and compiles it into a CSV file. 
+Example:
+```bash
+python3 run_experiments.py -o Cgggg,PcCgggg -d output_dir -m UM,GDDR,SYS
+```
+
+This creates a `Cgggg` and `PcCgggg` subdirectory in `output_dir`, and then runs both experiments for all three memory allocators and stores the results in the respective subdirectory.
+
+
+4. **Interpret Results**: After execution, the program provides results including the sequence of memory operations and their corresponding timings for CPU and GPU events.
+
+```bash
+python3 read_data.py -o <OPERATION_SEQUENCE> -d <DIRECTORY_CONTAINING_TXT_FILES>
+```
+
+This command reads all the data files in the operation subdirectory and compiles it into a single CSV file. 
 
 ## Command-Line Options
 
@@ -36,7 +48,11 @@ The following options are available when running the program:
 
 - `-n <int>`: Specifies the number of objects to be used in the exploration.
 - `-o <string>`: Defines the order of memory operations to be performed.
-- `-m <string>`: Specifies the type of memory to use, either "DRAM" or "UM" (Unified Memory).
+- `-m <string>`: Specifies the type of memory to use, either `SYS` (malloc()), `DRAM` (cudaMallocHost()), `UM` (cudaMallocManaged()), or `GDDR` (cudaMalloc())
+- `-l <1, 1K>`: Specifies the number of outer-loop iterations around the load/store operation
+- `-c <none, acq, rel, acq-acq, acq-rel>`: Specifies the memory ordering semantics to use for CPU operations
+- `-g <none, acq, rel, acq-acq, acq-rel>`: Specifies the memory ordering semantics to use for GPU operations
+- `-t <array, linkedlist>`: Specifies the data structures to use for the experiment. 
 - `-h`: Displays the help message with usage instructions.
 
 ## Sample Usage
