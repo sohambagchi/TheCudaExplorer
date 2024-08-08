@@ -5,9 +5,9 @@ import argparse
 
 parser = argparse.ArgumentParser(description='Run experiments for all executables in the current directory')
 
-parser.add_argument('--operations', '-o', dest='operation_list', type=str, help='The operation to run')
-parser.add_argument('--output_dir', '-d', dest='output_dir', type=str, help='The output directory to store the results')
-parser.add_argument('--mem_type', '-m', dest='mem_type', type=str, help='The memory type to run the experiments on')
+parser.add_argument('--operations', '-o', dest='operation_list', type=str, help='The operation to run', required=True)
+parser.add_argument('--output_dir', '-d', dest='output_dir', type=str, help='The output directory to store the results', required=True)
+parser.add_argument('--mem_type', '-m', dest='mem_type', type=str, help='The memory type to run the experiments on', required=True)
 
 args = parser.parse_args()
 

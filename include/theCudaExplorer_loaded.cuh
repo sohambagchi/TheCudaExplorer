@@ -303,6 +303,22 @@ __host__ void CPULoadedListConsumer(cuda::atomic<int>* flag, T* ptr, int *result
 }
 
 template <typename T>
+__host__ void CPULoadedListConsumer_1K(cuda::atomic<int>* flag, T* ptr, int *result, int *order, int *count) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
+
+  for (int z = 0; z < 1000; z++) {
+    for (int i = 0; i < _count; i++) {
+      for (int j = 0; j < PADDING_LENGTH/4; j++) {
+        result[i * PADDING_LENGTH/4 + j] = ptr[order[i]].data_na_list[j];
+      }
+    }
+  }
+}
+
+template <typename T>
 __host__ void CPULoadedListConsumer_acq(cuda::atomic<int>* flag, T* ptr1, int *result, int *order, int *count) {
   #ifdef RC
   while (flag->load(cuda::memory_order_acquire) == 0) {}
@@ -317,6 +333,22 @@ __host__ void CPULoadedListConsumer_acq(cuda::atomic<int>* flag, T* ptr1, int *r
 }
 
 template <typename T>
+__host__ void CPULoadedListConsumer_acq_1K(cuda::atomic<int>* flag, T* ptr1, int *result, int *order, int *count) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
+
+  for (int z = 0; z < 1000; z++) {
+    for (int i = 0; i < _count; i++) {
+      for (int j = 0; j < PADDING_LENGTH/4; j++) {
+        result[i * PADDING_LENGTH/4 + j] = ptr1[order[i]].data_list[j].load(cuda::memory_order_acquire);
+      }
+    }
+  }
+}
+
+template <typename T>
 __host__ void CPULoadedListConsumer_rel(cuda::atomic<int>* flag, T* ptr1, int *result, int *order, int *count) {
   #ifdef RC
   while (flag->load(cuda::memory_order_acquire) == 0) {}
@@ -326,6 +358,22 @@ __host__ void CPULoadedListConsumer_rel(cuda::atomic<int>* flag, T* ptr1, int *r
   for (int i = 0; i < _count; i++) {
     for (int j = 0; j < PADDING_LENGTH/4; j++) {
       result[i * PADDING_LENGTH/4 + j] = ptr1[order[i]].data_list[j].load(cuda::memory_order_relaxed);
+    }
+  }
+}
+
+template <typename T>
+__host__ void CPULoadedListConsumer_rel_1K(cuda::atomic<int>* flag, T* ptr1, int *result, int *order, int *count) {
+  #ifdef RC
+  while (flag->load(cuda::memory_order_acquire) == 0) {}
+  #endif
+  int _count = *count;
+
+  for (int z = 0; z < 1000; z++) {
+    for (int i = 0; i < _count; i++) {
+      for (int j = 0; j < PADDING_LENGTH/4; j++) {
+        result[i * PADDING_LENGTH/4 + j] = ptr1[order[i]].data_list[j].load(cuda::memory_order_relaxed);
+      }
     }
   }
 }
@@ -377,6 +425,24 @@ __host__ void CPULoadedListProducer(cuda::atomic<int>* flag, T* ptr, int *order,
 }
 
 template <typename T>
+__host__ void CPULoadedListProducer_1K(cuda::atomic<int>* flag, T* ptr, int *order, int *count) {
+  #ifdef RC
+  flag->store(0, cuda::memory_order_release);
+  #endif
+  int _count = *count;
+  for (int z = 0; z < 1000; z++) {
+    for (int i = 0; i < _count; i++) {
+      for (int j = 0; j < PADDING_LENGTH/4; j++) {
+        ptr[order[i]].data_na_list[j] = i;
+      }
+    }
+  }
+  #ifdef RC
+  flag->store(1, cuda::memory_order_release);
+  #endif
+}
+
+template <typename T>
 __host__ void CPULoadedListProducer_rel(cuda::atomic<int>* flag, T* ptr, int *order, int *count) {
   #ifdef RC
   flag->store(0, cuda::memory_order_release);
@@ -392,4 +458,21 @@ __host__ void CPULoadedListProducer_rel(cuda::atomic<int>* flag, T* ptr, int *or
   #endif
 }
 
-#endif
+template <typename T>
+__host__ void CPULoadedListProducer_acq_rel(cuda::atomic<int>* flag, T* ptr1, T* ptr2, int *order, int *count) {
+  #ifdef RC
+  flag->store(0, cuda::memory_order_release);
+  #endif
+  int _count = *count;
+  for (int i = 0; i < _count; i++) {
+    for (int j = 0; j < PADDING_LENGTH/4; j++) {
+      ptr1[order[i]].data_list[j].store(i, cuda::memory_order_relaxed);
+      ptr2[order[i]].data_list[j].store(i, cuda::memory_order_relaxed);
+    }
+  }
+  #ifdef RC
+  flag->store(1, cuda::memory_order_release);
+  #endif
+}
+
+#endif /* THECUDAEXPLORER_LOADED_H_ */
