@@ -4,6 +4,7 @@
 #include "include/theCudaExplorer_top.cuh"
 #include "include/theCudaExplorer_array.cuh"
 #include "include/theCudaExplorer_list.cuh"
+#include "include/theCudaExplorer_migrate.cuh"
 
 char randString[PADDING_LENGTH];
 
@@ -61,6 +62,12 @@ CEOperation * parseOperations(const char* operations) {
             case 'C':
                 mode = CE_LOAD;
                 break;
+            case 'T':
+                mode = CE_TOP;
+                break;
+            case 'B':
+                mode = CE_BOTTOM;
+                break;
             case 'g':
                 sequence[j].total = total_operations;
                 sequence[j].device = CE_GPU;
@@ -84,7 +91,7 @@ void printSequence(CEOperation * sequence) {
     printf("Sequence\n======================\n");
 
     for (int i = 0; i < sequence[0].total; i++) {
-        printf("%s %s\n", sequence[i].device == CE_CPU ? "CPU" : "\t\tGPU", sequence[i].action == CE_LOAD ? "ld" : "st");
+        printf("%s %s\n", sequence[i].device == CE_CPU ? "CPU" : "\t\tGPU", sequence[i].action == CE_LOAD ? "ld" : sequence[i].action == CE_STORE ? "st": "mod");
     }
 
     printf("\n");
@@ -96,11 +103,118 @@ void printResults(CEOperation * sequence, int numCPUEvents, int numGPUEvents, in
     printf("Results\n======================\n");
 
     for (int i = 0, j = 0, k = 0; i < sequence[0].total; i++) {
-        printf("%s %s\n", sequence[i].device == CE_CPU ? "CPU" : "\t\tGPU", sequence[i].action == CE_LOAD ? "ld" : "st");
+        printf("%s %s\n", sequence[i].device == CE_CPU ? "CPU" : "\t\tGPU", sequence[i].action == CE_LOAD ? "ld" : sequence[i].action == CE_STORE ? "st" : sequence[i].action == CE_TOP ? "top" : "bot");
         printf("%s    (%ld ns)\t[%ld ns]\n", sequence[i].device == CE_CPU ? "" : "\t\t", sequence[i].device == CE_CPU ? (durations[j] / *count) : (int64_t) (milliseconds[k] / *count), sequence[i].device == CE_CPU ? durations[j] : (int64_t) (milliseconds[k]));
-        printf("%s    (%u cycles)\t[%u ns]\n", sequence[i].device == CE_CPU ? "" : "\t\t", sequence[i].device == CE_CPU ? 0 : (loopDurations[k] / *count), sequence[i].device == CE_CPU ? 0 : loopDurations[k]);
-        if (sequence[i].device == CE_CPU) j++;
-        else k++;
+        if (loopDurations != NULL)
+            printf("%s    (%u cycles)\t[%u ns]\n", sequence[i].device == CE_CPU ? "" : "\t\t", sequence[i].device == CE_CPU ? 0 : (loopDurations[k] / *count), sequence[i].device == CE_CPU ? 0 : loopDurations[k]);
+            if (sequence[i].device == CE_CPU) j++;
+            else k++;
+    }
+
+}
+
+void initializeMigrationExperiment(int count) {
+    struct SystemMigrationObject64 * head;
+    struct SystemMigrationObject64_na * head_na;
+    int * localResults;
+    int * remoteResults;
+
+    head = (struct SystemMigrationObject64 *) malloc(sizeof(struct SystemMigrationObject64) * count);
+    head_na = (struct SystemMigrationObject64_na *) malloc(sizeof(struct SystemMigrationObject64_na) * count);
+
+    localResults = (int *) malloc(sizeof(int *) * count * 256);
+    SAFE(cudaMalloc(&remoteResults, sizeof(int *) * count * 256));
+
+    // int gpuEventCount = 0;
+    // int cpuEventCount = 0;
+
+    printf("Size of Object: %.2f MB, %.2f KB\n", sizeof(struct SystemMigrationObject64) / (1024.0 * 1024.0), sizeof(struct SystemMigrationObject64) / 1024.0);
+
+    int numCPUEvents = 1;
+    int numGPUEvents = 1;
+
+    std::chrono::high_resolution_clock::time_point begin[numCPUEvents], end[numCPUEvents];
+    int64_t durations[numCPUEvents];
+
+    cudaEvent_t start[numGPUEvents], stop[numGPUEvents];
+    float milliseconds[numGPUEvents];
+
+    for (int i = 0; i < numGPUEvents; i++) {
+        SAFE(cudaEventCreate(&start[i]));
+        SAFE(cudaEventCreate(&stop[i]));
+    }
+
+    for (int i = 0; i < count; i++) {
+        for (int j = 0; j < 256; j++) {
+            head[i].top_data[j].store(i * j);
+            head_na[i].bottom_data[j] = i * j;
+            // localResults[i * 256 + j] = head[i].bottom_data[j].load(cuda::memory_order_relaxed);
+            // localResults[i * 256 + j] = head_na[i].top_data[j];
+        }
+
+        for (int j = 0; j < 256; j++) {
+            head[i].bottom_data[j].store(i * j);
+            head_na[i].top_data[j] = i * j;
+            // localResults[i * 256 + j] = head[i].top_data[j].load(cuda::memory_order_relaxed);
+            // localResults[i * 256 + j] = head_na[i].bottom_data[j];
+        }
+    }
+
+    int innerFirst[numGPUEvents];
+    int innerSecond[numGPUEvents];
+
+    innerFirst[0] = 256;
+    // innerFirst[1] = 256;
+    // innerFirst[2] = 0;
+    // innerFirst[3] = 0;
+    // innerFirst[4] = 256;
+    // innerFirst[5] = 256;
+    // innerFirst[6] = 0;
+    // innerFirst[7] = 0;
+
+    innerSecond[0] = 128;
+    // innerSecond[1] = 0;
+    // innerSecond[2] = 128;
+    // innerSecond[3] = 128;
+    // innerSecond[4] = 0;
+    // innerSecond[5] = 0;
+    // innerSecond[6] = 128;
+    // innerSecond[7] = 128;
+
+    for (int i = 0; i < numGPUEvents; i++) {
+        cudaEventRecord(start[i]);
+        if (i % 2 == 0) {
+            gpuMigrationExperiment<<<1,1>>>(head, &count, &innerFirst[i], &innerSecond[i], remoteResults);
+        } else {
+            gpuMigrationExperiment_na<<<1,1>>>(head_na, &count, &innerFirst[i], &innerSecond[i], remoteResults);
+        }
+        cudaEventRecord(stop[i]);
+        cudaEventSynchronize(stop[i]);
+        cudaDeviceSynchronize();
+
+        milliseconds[i] = 0;
+        cudaEventElapsedTime(&milliseconds[i], start[i], stop[i]);
+        milliseconds[i] *= 1e6;
+
+        printf("%d -> %d -> %d%s: %f (%f)\n", innerFirst[i], innerSecond[i], innerSecond[i], (i%2) ? " (na)" : "", milliseconds[i], milliseconds[i] / (count));
+    }
+
+    innerSecond[0] = 0;
+
+    for (int i = 0; i < numCPUEvents; i++) {
+        begin[i] = std::chrono::high_resolution_clock::now();
+
+        if (i % 2 == 0) {
+            cpuMigrationExperiment(head, &count, &innerFirst[i], &innerSecond[i], localResults);
+        } else {
+            cpuMigrationExperiment_na(head_na, &count, &innerFirst[i], &innerSecond[i], localResults);
+        }
+        
+        end[i] = std::chrono::high_resolution_clock::now();
+
+        durations[i] = std::chrono::duration_cast<std::chrono::nanoseconds>(end[i] - begin[i]).count();
+
+        printf("%d -> %d -> %d%s: %ld (%ld)\n", innerFirst[i], innerSecond[i], innerSecond[i], (i%2) ? " (na)" : "", durations[i], durations[i] / count);
     }
 
 }
@@ -141,6 +255,8 @@ int main(int argc, char* argv[]) {
                     memoryType = CE_GDDR;
                 } else if (strcmp(optarg, "SYS") == 0) {
                     memoryType = CE_SYS;
+                } else if (strcmp(optarg, "MIGRATE") == 0) {
+                    memoryType = CE_MIGRATE;
                 } else {
                     printf("Invalid Memory Type: %s\n", optarg);
                     abort();
@@ -200,6 +316,9 @@ int main(int argc, char* argv[]) {
                     abort();
                 }
                 break;
+            // case 'i':
+            //     firstInnerObjectAccessCount = atoi(optarg);
+            //     break;
             case 'w':
                 warmup = true;
                 break;
@@ -278,6 +397,10 @@ int main(int argc, char* argv[]) {
             abort();
         }
     }
+
+    // TODO: sharp turn to migration experiment
+    initializeMigrationExperiment(numObjects);
+    return 0;
 
     cuda::atomic<int>* flag;
     struct LargeLinkedObject * largeObjectList;
