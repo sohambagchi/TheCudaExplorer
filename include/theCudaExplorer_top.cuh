@@ -30,14 +30,17 @@ typedef enum {
 
 typedef enum {
     CE_LOAD,
-    CE_STORE
+    CE_STORE,
+    CE_TOP,
+    CE_BOTTOM
 } CEAction;
 
 typedef enum {
     CE_DRAM,
     CE_UM,
     CE_GDDR,
-    CE_SYS
+    CE_SYS,
+    CE_MIGRATE
 } CEMemory;
 
 typedef enum {
@@ -96,6 +99,18 @@ struct LoadedLargeObject {
     cuda::atomic<int, SCOPE> data_list[PADDING_LENGTH/4];
     cuda::atomic<int, SCOPE> data;
 }; 
+
+struct SystemMigrationObject64 {
+    cuda::atomic<int, SCOPE> top_data[1024];
+    int padding_data[14336];
+    cuda::atomic<int, SCOPE> bottom_data[1024];
+};
+
+struct SystemMigrationObject64_na {
+    int top_data[1024];
+    int padding_data[14336];
+    int bottom_data[1024];
+};
 
 __global__ void EmptyKernel(int *count, unsigned int *before, unsigned int *after) {
   // *before = clock64();

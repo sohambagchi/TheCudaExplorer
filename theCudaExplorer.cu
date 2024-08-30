@@ -199,7 +199,7 @@ void initializeMigrationExperiment(int count) {
         printf("%d -> %d -> %d%s: %f (%f)\n", innerFirst[i], innerSecond[i], innerSecond[i], (i%2) ? " (na)" : "", milliseconds[i], milliseconds[i] / (count));
     }
 
-    innerSecond[0] = 0;
+    innerSecond[0] = 128;
 
     for (int i = 0; i < numCPUEvents; i++) {
         begin[i] = std::chrono::high_resolution_clock::now();
@@ -641,9 +641,9 @@ int main(int argc, char* argv[]) {
         cudaEventElapsedTime(&milliseconds[i], start[i], stop[i]);
         milliseconds[i] *= 1e6;
 
-        if (objectType == CE_LOADED) {
-            milliseconds[i] /= PADDING_LENGTH / 4;
-        }
+        // if (objectType == CE_LOADED) {
+        //     milliseconds[i] /= PADDING_LENGTH / 4;
+        // }
 
         loopDuration[i] = localAfterLoop[i] - localBeforeLoop[i];
     }
