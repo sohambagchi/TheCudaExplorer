@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <iostream>
 #include <vector>
+#include <numa.h>
 
 // Uncomment line below to enable release/acquire flags
 // #define RC
@@ -37,7 +38,9 @@ typedef enum {
     CE_DRAM,
     CE_UM,
     CE_GDDR,
-    CE_SYS
+    CE_SYS,
+    CE_NUMA_HOST,
+    CE_NUMA_DEVICE
 } CEMemory;
 
 typedef enum {

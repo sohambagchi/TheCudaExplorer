@@ -141,6 +141,10 @@ int main(int argc, char* argv[]) {
                     memoryType = CE_GDDR;
                 } else if (strcmp(optarg, "SYS") == 0) {
                     memoryType = CE_SYS;
+                } else if (strcmp(optarg, "NUMA_HOST") == 0) {
+                    memoryType = CE_NUMA_HOST;
+                } else if (strcmp(optarg, "NUMA_DEV") == 0) {
+                    memoryType = CE_NUMA_DEVICE;
                 } else {
                     printf("Invalid Memory Type: %s\n", optarg);
                     abort();
@@ -304,6 +308,14 @@ int main(int argc, char* argv[]) {
         localLoadedConsumer = (int *) malloc(sizeof(int) * *count);
         largeObjectListOrder = (int *) malloc(sizeof(int) * *count);
         localOrder = (int *) malloc(sizeof(int) * *count);
+    } else if (memoryType == CE_NUMA_DEVICE || memoryType == CE_NUMA_HOST) {
+        int numa_node = memoryType == CE_NUMA_HOST ? 0 : 1;
+
+        flag = (cuda::atomic<int> *) numa_alloc_onnode(sizeof(cuda::atomic<int>), numa_node);
+        localConsumer = (int *) numa_alloc_onnode(sizeof(int) * *count, numa_node);
+        localLoadedConsumer = (int *) numa_alloc_onnode(sizeof(int) * *count, numa_node);
+        largeObjectListOrder = (int *) numa_alloc_onnode(sizeof(int) * *count, numa_node);
+        localOrder = (int *) numa_alloc_onnode(sizeof(int) * *count, numa_node);
     } else {
         SAFE(cudaMallocHost(&flag, sizeof(cuda::atomic<int>)));
         SAFE(cudaMallocHost(&localConsumer, sizeof(int) * *count));
@@ -326,8 +338,11 @@ int main(int argc, char* argv[]) {
         SAFE(cudaMallocManaged(&largeObjectList, sizeof(struct LargeLinkedObject) * *count));
     } else if (memoryType == CE_GDDR) {
         SAFE(cudaMalloc(&largeObjectList, sizeof(struct LargeLinkedObject) * *count));
-    } else {
+    } else if (memoryType == CE_SYS) {
         largeObjectList = (struct LargeLinkedObject*) malloc(sizeof(struct LargeLinkedObject) * *count);
+    } else if (memoryType == CE_NUMA_DEVICE || memoryType == CE_NUMA_HOST) {
+        int numa_node = memoryType == CE_NUMA_HOST ? 0 : 1;
+        largeObjectList = (struct LargeLinkedObject*) numa_alloc_onnode(sizeof(struct LargeLinkedObject) * *count, numa_node);
     }
 
     localCopy = (struct LargeLinkedObject *) malloc(sizeof(struct LargeLinkedObject) * *count);
@@ -340,7 +355,7 @@ int main(int argc, char* argv[]) {
     shuffleList(localOrder, *count);
     SAFE(cudaMemcpy(largeObjectListOrder, localOrder, sizeof(int) * *count, cudaMemcpyHostToDevice));
 
-    printf("\nUsing %s for %s Objects\n", memoryType == CE_DRAM ? "cudaMallocHost" : memoryType == CE_UM ? "cudaMallocManaged" : memoryType == CE_GDDR ? "cudaMalloc" : "malloc", objectType == CE_ARRAY ? "Array" : objectType == CE_LINKEDLIST ? "LinkedList" : "Loaded List");
+    printf("\nUsing %s for %s Objects\n", memoryType == CE_DRAM ? "cudaMallocHost" : memoryType == CE_UM ? "cudaMallocManaged" : memoryType == CE_GDDR ? "cudaMalloc" : memoryType == CE_SYS ? "malloc" : memoryType == CE_NUMA_HOST ? "numa_alloc_onnode(host)" : "numa_alloc_onnode(device)", objectType == CE_ARRAY ? "Array" : objectType == CE_LINKEDLIST ? "LinkedList" : "Loaded List");
     printf("Per-Iteration Loads: %s (%s iter)\n\n", 
     gpuMemoryOrder == CE_ACQ ? "acquire" : gpuMemoryOrder == CE_REL ? "release" : gpuMemoryOrder == CE_ACQ_ACQ ? "acq/acq" : gpuMemoryOrder == CE_ACQ_REL ? "acq/rel" : "non-atomic", outerLoopCount == CE_BASE ? "1" : outerLoopCount == CE_1K ? "1K" : outerLoopCount == CE_10K ? "10K" : outerLoopCount == CE_100K ? "100K" : outerLoopCount == CE_1M ? "1M" : outerLoopCount == CE_10M ? "10M" : outerLoopCount == CE_100M ? "100M" : outerLoopCount == CE_1B ? "1B" : "unknown");
 
@@ -360,7 +375,6 @@ int main(int argc, char* argv[]) {
             }
 
             SAFE(cudaMemcpy(largeObjectList, localCopy, sizeof(struct LargeLinkedObject) * *count, cudaMemcpyHostToDevice));
-
         } else {
             for (int i = 0; i < (*count); i++) {
                 initRandString((sizeof(LargeLinkedObject) - sizeof(int)) / (2 * sizeof(char)));

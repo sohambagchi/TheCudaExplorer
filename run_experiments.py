@@ -13,7 +13,7 @@ args = parser.parse_args()
 
 operations = args.operation_list.split(',')
 output_dir = args.output_dir
-mem_type = args.mem_type.split(',')
+mem_type = args.mem_type.split(',') # SYS, NUMA_DEV, NUMA_HOST, DRAM, GDDR, UM
 
 if not os.path.isdir(output_dir):
     os.makedirs(output_dir, exist_ok=True)
